@@ -1,0 +1,254 @@
+version: '3.9'
+
+# Full local development stack: infrastructure + all services.
+# For infra only: docker-compose -f docker-compose.infra.yml up -d
+#
+# Prerequisites: copy .env.example to .env and fill in AWS credentials + API keys.
+#
+# Service ports:
+#   api-gateway      → 3000
+#   claims-service   → 3001
+#   workshop-service → 3002
+#   admin-service    → 3003
+#   damage-detection → 8001
+#   negotiation-llm  → 8002
+#   fraud-ml         → 8003
+#   ocr-extraction   → 8004
+#   web-insurer      → 3010
+#   web-workshop     → 3011
+
+include:
+  - docker-compose.infra.yml
+
+networks:
+  autoclaimx:
+    driver: bridge
+
+services:
+  # ── NestJS Services ─────────────────────────────────────────────────────────
+  api-gateway:
+    build:
+      context: .
+      dockerfile: apps/api-gateway/Dockerfile
+    container_name: acx_api_gateway
+    restart: unless-stopped
+    ports:
+      - '3000:3000'
+    env_file: .env
+    environment:
+      CLAIMS_SERVICE_URL: http://claims-service:3001
+      WORKSHOP_SERVICE_URL: http://workshop-service:3002
+      ADMIN_SERVICE_URL: http://admin-service:3003
+      REDIS_URL: redis://:autoclaimx_secret@redis:6379
+      KAFKA_BROKERS: kafka:29092
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - autoclaimx
+    healthcheck:
+      test: ['CMD-SHELL', 'wget --no-verbose --tries=1 --spider http://localhost:3000/api/v1/health || exit 1']
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  claims-service:
+    build:
+      context: .
+      dockerfile: apps/claims-service/Dockerfile
+    container_name: acx_claims_service
+    restart: unless-stopped
+    ports:
+      - '3001:3001'
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://autoclaimx:autoclaimx_secret@postgres:5432/autoclaimx
+      REDIS_URL: redis://:autoclaimx_secret@redis:6379
+      KAFKA_BROKERS: kafka:29092
+      DAMAGE_DETECTION_URL: http://damage-detection:8001
+      FRAUD_ML_URL: http://fraud-ml:8003
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - autoclaimx
+    healthcheck:
+      test: ['CMD-SHELL', 'wget --no-verbose --tries=1 --spider http://localhost:3001/api/v1/health || exit 1']
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  workshop-service:
+    build:
+      context: .
+      dockerfile: apps/workshop-service/Dockerfile
+    container_name: acx_workshop_service
+    restart: unless-stopped
+    ports:
+      - '3002:3002'
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://autoclaimx:autoclaimx_secret@postgres:5432/autoclaimx
+      REDIS_URL: redis://:autoclaimx_secret@redis:6379
+      KAFKA_BROKERS: kafka:29092
+      OCR_EXTRACTION_URL: http://ocr-extraction:8004
+      NEGOTIATION_LLM_URL: http://negotiation-llm:8002
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - autoclaimx
+    healthcheck:
+      test: ['CMD-SHELL', 'wget --no-verbose --tries=1 --spider http://localhost:3002/api/v1/health || exit 1']
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  admin-service:
+    build:
+      context: .
+      dockerfile: apps/admin-service/Dockerfile
+    container_name: acx_admin_service
+    restart: unless-stopped
+    ports:
+      - '3003:3003'
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://autoclaimx:autoclaimx_secret@postgres:5432/autoclaimx
+      REDIS_URL: redis://:autoclaimx_secret@redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - autoclaimx
+    healthcheck:
+      test: ['CMD-SHELL', 'wget --no-verbose --tries=1 --spider http://localhost:3003/api/v1/health || exit 1']
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # ── Python AI Services ───────────────────────────────────────────────────────
+  damage-detection:
+    build:
+      context: ai-services/damage-detection
+      dockerfile: Dockerfile
+    container_name: acx_damage_detection
+    restart: unless-stopped
+    ports:
+      - '8001:8001'
+    env_file: .env
+    environment:
+      KAFKA_BROKERS: kafka:29092
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - autoclaimx
+    healthcheck:
+      test: ['CMD-SHELL', 'wget --no-verbose --tries=1 --spider http://localhost:8001/health || exit 1']
+      interval: 30s
+      timeout: 15s
+      retries: 10
+    volumes:
+      - ./ai-services/damage-detection/model_weights:/app/model_weights
+
+  negotiation-llm:
+    build:
+      context: ai-services/negotiation-llm
+      dockerfile: Dockerfile
+    container_name: acx_negotiation_llm
+    restart: unless-stopped
+    ports:
+      - '8002:8002'
+    env_file: .env
+    environment:
+      REDIS_URL: redis://:autoclaimx_secret@redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - autoclaimx
+    healthcheck:
+      test: ['CMD-SHELL', 'wget --no-verbose --tries=1 --spider http://localhost:8002/health || exit 1']
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  fraud-ml:
+    build:
+      context: ai-services/fraud-ml
+      dockerfile: Dockerfile
+    container_name: acx_fraud_ml
+    restart: unless-stopped
+    ports:
+      - '8003:8003'
+    env_file: .env
+    environment:
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USER: neo4j
+      NEO4J_PASSWORD: autoclaimx_secret
+    depends_on:
+      neo4j:
+        condition: service_healthy
+    networks:
+      - autoclaimx
+    healthcheck:
+      test: ['CMD-SHELL', 'wget --no-verbose --tries=1 --spider http://localhost:8003/health || exit 1']
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  ocr-extraction:
+    build:
+      context: ai-services/ocr-extraction
+      dockerfile: Dockerfile
+    container_name: acx_ocr_extraction
+    restart: unless-stopped
+    ports:
+      - '8004:8004'
+    env_file: .env
+    networks:
+      - autoclaimx
+    healthcheck:
+      test: ['CMD-SHELL', 'wget --no-verbose --tries=1 --spider http://localhost:8004/health || exit 1']
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # ── Web Apps ─────────────────────────────────────────────────────────────────
+  web-insurer:
+    build:
+      context: apps/web-insurer
+      dockerfile: Dockerfile
+    container_name: acx_web_insurer
+    restart: unless-stopped
+    ports:
+      - '3010:3000'
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:3000
+      NEXT_PUBLIC_WS_URL: ws://localhost:3000
+    depends_on:
+      api-gateway:
+        condition: service_healthy
+    networks:
+      - autoclaimx
+
+  web-workshop:
+    build:
+      context: apps/web-workshop
+      dockerfile: Dockerfile
+    container_name: acx_web_workshop
+    restart: unless-stopped
+    ports:
+      - '3011:3000'
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:3000
+    depends_on:
+      api-gateway:
+        condition: service_healthy
+    networks:
+      - autoclaimx

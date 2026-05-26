@@ -1,0 +1,369 @@
+// AutoClaimX — PostgreSQL schema via Prisma
+// Multi-tenancy: every table carries tenant_id.
+// PostgreSQL RLS is applied via migration SQL (see infra/postgres/rls-policies.sql).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider          = "postgresql"
+  url               = env("DATABASE_URL")
+  shadowDatabaseUrl = env("DATABASE_SHADOW_URL")
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+enum ClaimStatus {
+  FNOL_RECEIVED
+  MEDIA_PROCESSING
+  UNDER_ASSESSMENT
+  NEGOTIATING
+  SETTLED
+  CLOSED
+  DISPUTED
+}
+
+enum DamageSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  TOTAL_LOSS
+}
+
+enum FraudRisk {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum NegotiationStatus {
+  PENDING
+  OFFER_SENT
+  COUNTER_RECEIVED
+  AGREED
+  ESCALATED
+  ABANDONED
+}
+
+enum NegotiationStyle {
+  AGGRESSIVE
+  BALANCED
+  CUSTOMER_FIRST
+}
+
+enum TenantPlan {
+  STARTER
+  PROFESSIONAL
+  ENTERPRISE
+}
+
+enum UserRole {
+  PLATFORM_ADMIN
+  INSURER_ADMIN
+  ADJUSTER
+  WORKSHOP_ADMIN
+  WORKSHOP_STAFF
+  FLEET_ADMIN
+  POLICYHOLDER
+}
+
+enum AccreditationStatus {
+  PENDING
+  APPROVED
+  SUSPENDED
+  REJECTED
+}
+
+enum OfferParty {
+  AI
+  WORKSHOP
+}
+
+enum ProcessingStatus {
+  PENDING
+  PROCESSING
+  COMPLETE
+  FAILED
+}
+
+// ─── Tenant ───────────────────────────────────────────────────────────────────
+
+model Tenant {
+  id        String     @id @default(uuid())
+  name      String
+  slug      String     @unique
+  plan      TenantPlan @default(STARTER)
+  active    Boolean    @default(true)
+  // Insurer-specific config stored as JSONB
+  // Keys: negotiationStyle, maxNegotiationRounds, autoApprovalThreshold,
+  //       fraudAutoHoldThreshold, primaryCurrency, logoUrl, primaryColor
+  config    Json       @default("{}")
+  createdAt DateTime   @default(now()) @map("created_at")
+  updatedAt DateTime   @updatedAt @map("updated_at")
+
+  users         User[]
+  claims        Claim[]
+  workshops     Workshop[]
+  apiKeys       ApiKey[]
+
+  @@map("tenants")
+}
+
+// ─── User ─────────────────────────────────────────────────────────────────────
+
+model User {
+  id           String   @id @default(uuid())
+  tenantId     String   @map("tenant_id")
+  email        String?  @unique
+  phone        String?  @unique
+  passwordHash String?  @map("password_hash")
+  name         String
+  role         UserRole
+  active       Boolean  @default(true)
+  lastLoginAt  DateTime? @map("last_login_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  tenant              Tenant              @relation(fields: [tenantId], references: [id])
+  assignedClaims      Claim[]             @relation("AssignedAdjuster")
+  negotiationReviews  NegotiationSession[]
+
+  @@index([tenantId])
+  @@index([email])
+  @@index([phone])
+  @@map("users")
+}
+
+// ─── API Key ──────────────────────────────────────────────────────────────────
+
+model ApiKey {
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  keyHash     String   @unique @map("key_hash")
+  name        String
+  scopes      String[] @default([])
+  lastUsedAt  DateTime? @map("last_used_at")
+  expiresAt   DateTime? @map("expires_at")
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+  @@map("api_keys")
+}
+
+// ─── Claim ────────────────────────────────────────────────────────────────────
+
+model Claim {
+  id                  String      @id @default(uuid())
+  tenantId            String      @map("tenant_id")
+  claimNumber         String      @unique @map("claim_number")
+  status              ClaimStatus @default(FNOL_RECEIVED)
+  policyNumber        String      @map("policy_number")
+  policyHolderId      String      @map("policy_holder_id")
+  vehicleVin          String?     @map("vehicle_vin")
+  vehiclePlate        String      @map("vehicle_plate")
+  vehicleMake         String      @map("vehicle_make")
+  vehicleModel        String      @map("vehicle_model")
+  vehicleYear         Int         @map("vehicle_year")
+  incidentDate        DateTime    @map("incident_date")
+  incidentLat         Decimal?    @map("incident_lat")
+  incidentLng         Decimal?    @map("incident_lng")
+  incidentAddress     String?     @map("incident_address")
+  incidentDescription String?     @map("incident_description")
+  assignedAdjusterId  String?     @map("assigned_adjuster_id")
+  reserveAmount       Decimal?    @map("reserve_amount")
+  settlementAmount    Decimal?    @map("settlement_amount")
+  currency            String      @default("USD")
+  closedAt            DateTime?   @map("closed_at")
+  createdAt           DateTime    @default(now()) @map("created_at")
+  updatedAt           DateTime    @updatedAt @map("updated_at")
+
+  tenant           Tenant              @relation(fields: [tenantId], references: [id])
+  assignedAdjuster User?               @relation("AssignedAdjuster", fields: [assignedAdjusterId], references: [id])
+  damageReport     DamageReport?
+  fraudScore       FraudScore?
+  negotiation      NegotiationSession?
+  auditEvents      AuditEvent[]
+
+  @@index([tenantId])
+  @@index([status])
+  @@index([policyHolderId])
+  @@index([vehiclePlate])
+  @@index([claimNumber])
+  @@map("claims")
+}
+
+// ─── Damage Report ────────────────────────────────────────────────────────────
+
+model DamageReport {
+  id                   String          @id @default(uuid())
+  claimId              String          @unique @map("claim_id")
+  processingStatus     ProcessingStatus @default(PENDING) @map("processing_status")
+  // Full YOLOv8 output: array of DetectedDamage objects
+  aiDamages            Json            @default("[]") @map("ai_damages")
+  overallSeverity      DamageSeverity? @map("overall_severity")
+  totalLossProbability Decimal         @default(0) @map("total_loss_probability")
+  estimatedCostMin     Decimal         @default(0) @map("estimated_cost_min")
+  estimatedCostMax     Decimal         @default(0) @map("estimated_cost_max")
+  currency             String          @default("USD")
+  // Adjuster can override any AI field; stored as partial DamageReport JSON
+  humanOverride        Json?           @map("human_override")
+  modelVersion         String          @default("") @map("model_version")
+  processedAt          DateTime?       @map("processed_at")
+  createdAt            DateTime        @default(now()) @map("created_at")
+  updatedAt            DateTime        @updatedAt @map("updated_at")
+
+  claim Claim @relation(fields: [claimId], references: [id])
+
+  @@map("damage_reports")
+}
+
+// ─── Workshop ─────────────────────────────────────────────────────────────────
+
+model Workshop {
+  id                           String              @id @default(uuid())
+  tenantId                     String              @map("tenant_id")
+  name                         String
+  registrationNumber           String?             @map("registration_number")
+  phone                        String?
+  email                        String?
+  address                      String?
+  lat                          Decimal?
+  lng                          Decimal?
+  accreditationStatus          AccreditationStatus @default(PENDING) @map("accreditation_status")
+  riskScore                    Decimal             @default(0) @map("risk_score")
+  averageNegotiationDiscount   Decimal             @default(0) @map("average_negotiation_discount")
+  active                       Boolean             @default(true)
+  createdAt                    DateTime            @default(now()) @map("created_at")
+  updatedAt                    DateTime            @updatedAt @map("updated_at")
+
+  tenant       Tenant              @relation(fields: [tenantId], references: [id])
+  estimates    WorkshopEstimate[]
+  negotiations NegotiationSession[]
+
+  @@index([tenantId])
+  @@map("workshops")
+}
+
+// ─── Workshop Estimate (from OCR) ────────────────────────────────────────────
+
+model WorkshopEstimate {
+  id             String   @id @default(uuid())
+  workshopId     String   @map("workshop_id")
+  claimId        String   @map("claim_id")
+  rawFileUrl     String   @map("raw_file_url")
+  // Parsed line items: array of LineItem objects
+  lineItems      Json     @default("[]") @map("line_items")
+  subtotal       Decimal  @default(0)
+  laborTotal     Decimal  @default(0) @map("labor_total")
+  partsTotal     Decimal  @default(0) @map("parts_total")
+  total          Decimal  @default(0)
+  currency       String   @default("USD")
+  ocrConfidence  Decimal  @default(0) @map("ocr_confidence")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  workshop     Workshop            @relation(fields: [workshopId], references: [id])
+  negotiations NegotiationSession[]
+
+  @@index([claimId])
+  @@index([workshopId])
+  @@map("workshop_estimates")
+}
+
+// ─── Negotiation Session ─────────────────────────────────────────────────────
+
+model NegotiationSession {
+  id                  String            @id @default(uuid())
+  claimId             String            @unique @map("claim_id")
+  workshopId          String            @map("workshop_id")
+  workshopEstimateId  String?           @map("workshop_estimate_id")
+  status              NegotiationStatus @default(PENDING)
+  currentRound        Int               @default(0) @map("current_round")
+  maxRounds           Int               @default(3) @map("max_rounds")
+  style               NegotiationStyle  @default(BALANCED)
+  finalAmount         Decimal?          @map("final_amount")
+  currency            String            @default("USD")
+  escalatedToUserId   String?           @map("escalated_to_user_id")
+  resolvedAt          DateTime?         @map("resolved_at")
+  createdAt           DateTime          @default(now()) @map("created_at")
+  updatedAt           DateTime          @updatedAt @map("updated_at")
+
+  claim            Claim             @relation(fields: [claimId], references: [id])
+  workshop         Workshop          @relation(fields: [workshopId], references: [id])
+  workshopEstimate WorkshopEstimate? @relation(fields: [workshopEstimateId], references: [id])
+  escalatedTo      User?             @relation(fields: [escalatedToUserId], references: [id])
+  offers           NegotiationOffer[]
+
+  @@index([claimId])
+  @@index([workshopId])
+  @@map("negotiation_sessions")
+}
+
+// ─── Negotiation Offer ────────────────────────────────────────────────────────
+
+model NegotiationOffer {
+  id            String     @id @default(uuid())
+  sessionId     String     @map("session_id")
+  round         Int
+  offerer       OfferParty
+  amount        Decimal
+  currency      String     @default("USD")
+  // Array of LineItem objects with benchmark comparison
+  breakdown     Json       @default("[]")
+  message       String
+  confidence    Decimal?
+  style         NegotiationStyle?
+  accepted      Boolean    @default(false)
+  createdAt     DateTime   @default(now()) @map("created_at")
+
+  session NegotiationSession @relation(fields: [sessionId], references: [id])
+
+  @@index([sessionId])
+  @@map("negotiation_offers")
+}
+
+// ─── Fraud Score ──────────────────────────────────────────────────────────────
+
+model FraudScore {
+  id              String    @id @default(uuid())
+  claimId         String    @unique @map("claim_id")
+  totalScore      Decimal   @default(0) @map("total_score")
+  imageScore      Decimal   @default(0) @map("image_score")
+  behavioralScore Decimal   @default(0) @map("behavioral_score")
+  graphScore      Decimal   @default(0) @map("graph_score")
+  riskLevel       FraudRisk @default(LOW) @map("risk_level")
+  // Array of FraudFlag objects
+  flags           Json      @default("[]")
+  reviewedById    String?   @map("reviewed_by_id")
+  reviewNote      String?   @map("review_note")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  claim Claim @relation(fields: [claimId], references: [id])
+
+  @@map("fraud_scores")
+}
+
+// ─── Audit Event ─────────────────────────────────────────────────────────────
+
+model AuditEvent {
+  id         String   @id @default(uuid())
+  tenantId   String   @map("tenant_id")
+  claimId    String?  @map("claim_id")
+  actorId    String?  @map("actor_id")
+  actorType  String   @map("actor_type") // 'user' | 'system' | 'ai'
+  eventType  String   @map("event_type") // e.g. 'claim.status_changed', 'negotiation.offer_made'
+  payload    Json     @default("{}")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  claim Claim? @relation(fields: [claimId], references: [id])
+
+  @@index([tenantId])
+  @@index([claimId])
+  @@index([eventType])
+  @@map("audit_events")
+}

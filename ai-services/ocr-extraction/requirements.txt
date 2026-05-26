@@ -1,0 +1,21 @@
+fastapi==0.111.0
+uvicorn[standard]==0.30.1
+pydantic==2.8.0
+
+# PDF parsing
+pdfplumber==0.11.2
+PyMuPDF==1.24.7
+
+# OCR fallback
+pytesseract==0.3.13
+Pillow==10.4.0
+
+# Anthropic (for complex/ambiguous estimates)
+anthropic==0.30.0
+
+# AWS
+boto3==1.34.144
+
+# Testing
+pytest==8.2.2
+pytest-asyncio==0.23.7

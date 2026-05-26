@@ -1,0 +1,12 @@
+# Normalize line endings for cross-platform development
+* text=auto eol=lf
+
+# Force binary for non-text files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pt binary
+*.pth binary
+*.onnx binary

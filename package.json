@@ -1,0 +1,31 @@
+{
+  "name": "autoclaimx-platform",
+  "private": true,
+  "scripts": {
+    "build": "turbo build",
+    "dev": "turbo dev",
+    "lint": "turbo lint",
+    "typecheck": "turbo typecheck",
+    "test": "turbo test",
+    "db:generate": "pnpm --filter @autoclaimx/db-client exec prisma generate",
+    "db:migrate": "pnpm --filter @autoclaimx/db-client exec prisma migrate dev",
+    "db:push": "pnpm --filter @autoclaimx/db-client exec prisma db push",
+    "db:seed": "pnpm --filter @autoclaimx/db-client exec ts-node src/seed.ts",
+    "infra:up": "docker-compose -f docker-compose.infra.yml up -d",
+    "infra:down": "docker-compose -f docker-compose.infra.yml down",
+    "up": "docker-compose up -d",
+    "down": "docker-compose down"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "eslint": "^8.57.0",
+    "prettier": "^3.3.0",
+    "turbo": "^2.0.0",
+    "typescript": "^5.5.0"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "packageManager": "pnpm@9.4.0"
+}

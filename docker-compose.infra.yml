@@ -1,0 +1,180 @@
+version: '3.9'
+
+# Infrastructure-only compose file.
+# Run: pnpm infra:up  (or: docker-compose -f docker-compose.infra.yml up -d)
+#
+# Services exposed on localhost:
+#   PostgreSQL  → 5432
+#   MongoDB     → 27017
+#   Redis       → 6379
+#   Neo4j       → 7474 (HTTP UI), 7687 (Bolt)
+#   Kafka       → 9092
+#   Kafka UI    → 8080
+#   Zookeeper   → 2181
+
+networks:
+  autoclaimx:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  mongo_data:
+  redis_data:
+  neo4j_data:
+  neo4j_logs:
+  kafka_data:
+  zookeeper_data:
+  zookeeper_logs:
+
+services:
+  # ── PostgreSQL ──────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:15-alpine
+    container_name: acx_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: autoclaimx
+      POSTGRES_PASSWORD: autoclaimx_secret
+      POSTGRES_DB: autoclaimx
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - autoclaimx
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U autoclaimx']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── MongoDB ─────────────────────────────────────────────────────────────────
+  mongo:
+    image: mongo:7.0
+    container_name: acx_mongo
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: autoclaimx
+      MONGO_INITDB_ROOT_PASSWORD: autoclaimx_secret
+      MONGO_INITDB_DATABASE: autoclaimx
+    ports:
+      - '27017:27017'
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - autoclaimx
+    healthcheck:
+      test: ['CMD', 'mongosh', '--eval', 'db.adminCommand("ping")']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Redis ───────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7.2-alpine
+    container_name: acx_redis
+    restart: unless-stopped
+    command: redis-server --requirepass autoclaimx_secret --appendonly yes
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+    networks:
+      - autoclaimx
+    healthcheck:
+      test: ['CMD', 'redis-cli', '-a', 'autoclaimx_secret', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Neo4j ───────────────────────────────────────────────────────────────────
+  neo4j:
+    image: neo4j:5.20-community
+    container_name: acx_neo4j
+    restart: unless-stopped
+    environment:
+      NEO4J_AUTH: neo4j/autoclaimx_secret
+      NEO4J_PLUGINS: '["apoc"]'
+      NEO4J_dbms_memory_heap_initial__size: 512m
+      NEO4J_dbms_memory_heap_max__size: 1G
+    ports:
+      - '7474:7474'
+      - '7687:7687'
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+    networks:
+      - autoclaimx
+    healthcheck:
+      test: ['CMD-SHELL', 'wget --no-verbose --tries=1 --spider http://localhost:7474 || exit 1']
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+  # ── Zookeeper (required by Kafka) ───────────────────────────────────────────
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.1
+    container_name: acx_zookeeper
+    restart: unless-stopped
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - '2181:2181'
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper/data
+      - zookeeper_logs:/var/lib/zookeeper/log
+    networks:
+      - autoclaimx
+    healthcheck:
+      test: ['CMD-SHELL', 'echo ruok | nc localhost 2181']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Kafka ───────────────────────────────────────────────────────────────────
+  kafka:
+    image: confluentinc/cp-kafka:7.6.1
+    container_name: acx_kafka
+    restart: unless-stopped
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
+      KAFKA_LOG_RETENTION_HOURS: 168
+    ports:
+      - '9092:9092'
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    networks:
+      - autoclaimx
+    healthcheck:
+      test: ['CMD-SHELL', 'kafka-broker-api-versions --bootstrap-server localhost:9092']
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+  # ── Kafka UI (development convenience) ─────────────────────────────────────
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: acx_kafka_ui
+    restart: unless-stopped
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      KAFKA_CLUSTERS_0_NAME: autoclaimx-local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
+    ports:
+      - '8080:8080'
+    networks:
+      - autoclaimx
