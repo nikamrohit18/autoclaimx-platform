@@ -24,6 +24,7 @@ from app.schemas import (
     ProcessingStatus,
     Severity,
 )
+from app import kafka_worker
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -42,7 +43,9 @@ async def lifespan(app: FastAPI):
     logger.info("Loading damage detection model...")
     detector.load()
     logger.info("Model ready")
+    stop_event = kafka_worker.start(detector)
     yield
+    stop_event.set()  # signal worker thread to exit cleanly
 
 
 app = FastAPI(

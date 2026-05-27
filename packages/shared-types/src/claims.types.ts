@@ -378,6 +378,8 @@ export interface FraudScoreUpdatedPayload {
   totalScore: number;
   riskLevel: FraudRisk;
   autoHold: boolean;
+  imageScore?: number; // set by fraud-ml; absent for behavioral-only events
+  flags?: Array<{ type: string; description: string; severity: string }>;
 }
 
 export interface NegotiationOfferMadePayload {

@@ -7,6 +7,7 @@ from __future__ import annotations
 import io
 import logging
 import os
+from contextlib import asynccontextmanager
 from typing import Optional
 
 import boto3
@@ -15,6 +16,7 @@ from PIL import Image
 from pydantic import BaseModel
 
 from app.detectors.image_forgery import score_image_fraud
+from app import kafka_worker
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -22,7 +24,15 @@ logger = logging.getLogger(__name__)
 s3 = boto3.client("s3", region_name=os.getenv("AWS_REGION", "ap-southeast-1"))
 MEDIA_BUCKET = os.getenv("S3_MEDIA_BUCKET", "autoclaimx-media-dev")
 
-app = FastAPI(title="AutoClaimX Fraud ML", version="0.1.0")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    stop_event = kafka_worker.start()
+    yield
+    stop_event.set()
+
+
+app = FastAPI(title="AutoClaimX Fraud ML", version="0.1.0", lifespan=lifespan)
 
 
 @app.get("/health")

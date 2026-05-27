@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { prisma, withTenant } from '@autoclaimx/db-client';
+import { withTenant } from '@autoclaimx/db-client';
 import { KafkaService, KAFKA_TOPICS } from '../kafka/kafka.service';
 import { FraudScoreUpdatedPayload, FraudRisk } from '@autoclaimx/shared-types';
 import { v4 as uuidv4 } from 'uuid';
@@ -65,5 +65,42 @@ export class FraudService {
 
     await this.kafka.publish(KAFKA_TOPICS.FRAUD_SCORE_UPDATED, payload, tenantId);
     this.logger.log(`Behavioral fraud score ${behavioralScore.toFixed(2)} for claim ${claimId}`);
+  }
+
+  // Called by WorkflowService when fraud-ml publishes a fraud.score.updated event
+  // with an imageScore field. Merges the image signal into the existing FraudScore record.
+  async applyImageScore(
+    tenantId: string,
+    claimId: string,
+    imageScore: number,
+    incomingFlags: Array<{ type: string; description: string; severity: string }>,
+  ): Promise<void> {
+    const existing = await withTenant(tenantId, (tx) =>
+      tx.fraudScore.findUnique({ where: { claimId } }),
+    );
+
+    const behavioralScore = existing ? Number(existing.behavioralScore) : 0;
+    const totalScore = Math.min(1, behavioralScore * 0.35 + imageScore * 0.65);
+    const riskLevel: FraudRisk = totalScore >= 0.6 ? 'HIGH' : totalScore >= 0.3 ? 'MEDIUM' : 'LOW';
+    const existingFlags = (existing?.flags as Array<{ type: string; description: string; severity: string }> | null) ?? [];
+    const allFlags = [...existingFlags, ...incomingFlags];
+
+    await withTenant(tenantId, (tx) =>
+      tx.fraudScore.upsert({
+        where: { claimId },
+        create: {
+          id: uuidv4(),
+          tenantId,
+          claimId,
+          imageScore,
+          totalScore,
+          riskLevel,
+          flags: allFlags,
+        },
+        update: { imageScore, totalScore, riskLevel, flags: allFlags },
+      }),
+    );
+
+    this.logger.log(`Image fraud score ${imageScore.toFixed(2)} merged for claim ${claimId} → total=${totalScore.toFixed(2)}`);
   }
 }

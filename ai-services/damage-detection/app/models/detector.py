@@ -13,7 +13,7 @@ import numpy as np
 from PIL import Image
 from ultralytics import YOLO
 
-from app.schemas import BoundingBox, DamageClass, DetectedDamage, MediaAngleTag, RepairRecommendation, Severity
+from app.schemas import BoundingBox, DamageClass, DetectedDamage, RepairRecommendation, Severity
 
 logger = logging.getLogger(__name__)
 

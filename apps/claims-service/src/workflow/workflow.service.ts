@@ -43,10 +43,17 @@ export class WorkflowService implements OnModuleInit {
       KAFKA_TOPICS.FRAUD_SCORE_UPDATED,
       'claims-service-fraud-consumer',
       async (event) => {
-        this.logger.log(`Fraud score updated for claim ${event.payload.claimId} → ${event.payload.riskLevel}`);
-        if (event.payload.autoHold) {
-          await this.claims.updateStatus(event.tenantId, event.payload.claimId, 'DISPUTED');
-          this.logger.warn(`Auto-held claim ${event.payload.claimId} due to fraud score`);
+        const { claimId, riskLevel, autoHold, imageScore, flags } = event.payload;
+        this.logger.log(`Fraud score updated for claim ${claimId} → ${riskLevel}`);
+
+        if (imageScore !== undefined) {
+          // Event from fraud-ml: merge image signal into the DB record
+          await this.fraud.applyImageScore(event.tenantId, claimId, imageScore, flags ?? []);
+        }
+
+        if (autoHold) {
+          await this.claims.updateStatus(event.tenantId, claimId, 'DISPUTED');
+          this.logger.warn(`Auto-held claim ${claimId} due to fraud score`);
         }
       },
     );
