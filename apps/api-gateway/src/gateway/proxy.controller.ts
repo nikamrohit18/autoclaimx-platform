@@ -2,6 +2,7 @@ import { All, Controller, Param, Req, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { Request } from 'express';
 import { ProxyService } from './proxy.service';
+import { ResourceRolesGuard } from '../auth/roles.guard';
 
 type ServiceName = 'claims' | 'workshop' | 'admin';
 
@@ -14,7 +15,7 @@ const SERVICE_MAP: Record<string, ServiceName> = {
 };
 
 @Controller()
-@UseGuards(AuthGuard('jwt'))
+@UseGuards(AuthGuard('jwt'), ResourceRolesGuard)
 export class ProxyController {
   constructor(private readonly proxyService: ProxyService) {}
 

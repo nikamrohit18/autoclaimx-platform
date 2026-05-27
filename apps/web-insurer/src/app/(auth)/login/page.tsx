@@ -31,6 +31,15 @@ export default function LoginPage() {
       const { accessToken, refreshToken } = await res.json();
       localStorage.setItem('acx_access_token', accessToken);
       localStorage.setItem('acx_refresh_token', refreshToken);
+
+      const meRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/auth/me`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (meRes.ok) {
+        const user = await meRes.json();
+        localStorage.setItem('acx_user', JSON.stringify(user));
+      }
+
       router.push('/claims');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed');

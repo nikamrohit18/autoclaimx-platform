@@ -19,7 +19,8 @@ A sibling repo `autoclaimx-mobile` (Expo/React Native) holds the policyholder mo
 | Phase 4 | Workshop & Negotiation — OCR estimates, Claude negotiation agent, Kafka events | ✅ Done |
 | Phase 5 | Web UIs — web-insurer and web-workshop connected to real APIs | ✅ Done |
 | Phase 6 | Real-time + Analytics — Socket.io live status push, analytics dashboard | ✅ Done |
-| Phase 7 | Admin Service + RBAC | 🔜 Next |
+| Phase 7 | Admin Service + RBAC — service layer, RBAC guard, admin users panel | ✅ Done |
+| Phase 8 | Production Deployment — Dockerfiles, docker-compose.prod, CI/CD | 🔜 Next |
 
 ---
 

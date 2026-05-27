@@ -51,6 +51,25 @@ export const negotiationsApi = {
     api.post(`/negotiations/${sessionId}/counter`, body).then((r) => r.data),
 };
 
+// ── Admin ─────────────────────────────────────────────────────────────────────
+
+export const adminApi = {
+  listUsers: () => api.get('/users').then((r) => r.data),
+
+  createUser: (body: {
+    name: string; email?: string; phone?: string;
+    role: string; password?: string; workshopId?: string;
+  }) => api.post('/users', body).then((r) => r.data),
+
+  updateUser: (id: string, body: { name?: string; role?: string; active?: boolean }) =>
+    api.patch(`/users/${id}`, body).then((r) => r.data),
+
+  getTenant: () => api.get('/tenants/me').then((r) => r.data),
+
+  updateTenant: (id: string, body: Record<string, unknown>) =>
+    api.patch(`/tenants/${id}`, body).then((r) => r.data),
+};
+
 // ── Analytics ────────────────────────────────────────────────────────────────
 
 export const analyticsApi = {
