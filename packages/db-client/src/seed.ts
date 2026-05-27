@@ -155,8 +155,8 @@ async function main() {
       claimId: claim1.id,
       processingStatus: 'COMPLETE',
       aiDamages: [
-        { part: 'rear_bumper', severity: 'HIGH', confidence: 0.94 },
-        { part: 'boot_lid', severity: 'MEDIUM', confidence: 0.87 },
+        { partLabel: 'Rear Bumper', damageClass: 'DENT', severity: 'HIGH', confidence: 0.94, recommendation: 'REPLACE', estimatedCostMin: 1800, estimatedCostMax: 2800, mediaAssetId: 'seed-media-001' },
+        { partLabel: 'Boot Lid', damageClass: 'DENT', severity: 'MEDIUM', confidence: 0.87, recommendation: 'REPAIR', estimatedCostMin: 1400, estimatedCostMax: 3000, mediaAssetId: 'seed-media-001' },
       ],
       overallSeverity: 'MEDIUM',
       totalLossProbability: 0.05,
@@ -199,9 +199,9 @@ async function main() {
       claimId: claim2.id,
       processingStatus: 'COMPLETE',
       aiDamages: [
-        { part: 'front_door_left', severity: 'HIGH', confidence: 0.91 },
-        { part: 'front_fender_left', severity: 'HIGH', confidence: 0.88 },
-        { part: 'side_mirror_left', severity: 'MEDIUM', confidence: 0.95 },
+        { partLabel: 'Front Door (Left)', damageClass: 'DENT', severity: 'HIGH', confidence: 0.91, recommendation: 'REPLACE', estimatedCostMin: 3200, estimatedCostMax: 4200, mediaAssetId: 'seed-media-002' },
+        { partLabel: 'Front Fender (Left)', damageClass: 'SCRATCH', severity: 'HIGH', confidence: 0.88, recommendation: 'REPAIR', estimatedCostMin: 1800, estimatedCostMax: 2600, mediaAssetId: 'seed-media-002' },
+        { partLabel: 'Side Mirror (Left)', damageClass: 'CRACK', severity: 'MEDIUM', confidence: 0.95, recommendation: 'REPLACE', estimatedCostMin: 500, estimatedCostMax: 800, mediaAssetId: 'seed-media-002' },
       ],
       overallSeverity: 'HIGH',
       totalLossProbability: 0.1,
@@ -213,17 +213,20 @@ async function main() {
     },
   });
 
-  const estimate2 = await prisma.workshopEstimate.create({
-    data: {
+  const estimate2 = await prisma.workshopEstimate.upsert({
+    where: { id: 'seed-estimate-002' },
+    update: {},
+    create: {
+      id: 'seed-estimate-002',
       tenantId: tenant.id,
       workshopId: workshop.id,
       claimId: claim2.id,
       rawFileUrl: 'https://s3.example.com/estimates/acx-2024-00002.pdf',
       lineItems: [
-        { description: 'Front door panel replacement', quantity: 1, unitPrice: 3800, total: 3800 },
-        { description: 'Front fender repair & respray', quantity: 1, unitPrice: 2200, total: 2200 },
-        { description: 'Side mirror assembly', quantity: 1, unitPrice: 650, total: 650 },
-        { description: 'Labour (8 hrs)', quantity: 8, unitPrice: 120, total: 960 },
+        { description: 'Front door panel replacement', quantity: 1, unitCost: 3800, totalCost: 3800 },
+        { description: 'Front fender repair & respray', quantity: 1, unitCost: 2200, totalCost: 2200 },
+        { description: 'Side mirror assembly', quantity: 1, unitCost: 650, totalCost: 650 },
+        { description: 'Labour (8 hrs)', quantity: 8, unitCost: 120, totalCost: 960 },
       ],
       subtotal: 7610,
       partsTotal: 6650,
@@ -302,7 +305,7 @@ async function main() {
       claimId: claim3.id,
       processingStatus: 'COMPLETE',
       aiDamages: [
-        { part: 'front_bumper', severity: 'LOW', confidence: 0.96 },
+        { partLabel: 'Front Bumper', damageClass: 'SCRATCH', severity: 'LOW', confidence: 0.96, recommendation: 'REPAIR', estimatedCostMin: 800, estimatedCostMax: 2500, mediaAssetId: 'seed-media-003' },
       ],
       overallSeverity: 'LOW',
       totalLossProbability: 0.01,

@@ -390,4 +390,5 @@ export interface NegotiationOfferMadePayload {
   offerer: 'AI' | 'WORKSHOP';
   amount: number;
   currency: string;
+  sessionStatus?: NegotiationStatus;
 }

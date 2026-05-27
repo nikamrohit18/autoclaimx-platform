@@ -12,6 +12,9 @@ export class NegotiationService {
   constructor(private readonly kafka: KafkaService) {}
 
   async startSession(tenantId: string, claimId: string, workshopId: string, workshopEstimateId: string) {
+    const claim = await withTenant(tenantId, (tx) => tx.claim.findUnique({ where: { id: claimId } }));
+    const currency = claim?.currency ?? 'MYR';
+
     const session = await withTenant(tenantId, (tx) =>
       tx.negotiationSession.create({
         data: {
@@ -24,7 +27,7 @@ export class NegotiationService {
           currentRound: 0,
           maxRounds: 3,
           style: 'BALANCED',
-          currency: 'USD',
+          currency,
         },
         include: { workshopEstimate: true },
       }),
@@ -133,6 +136,7 @@ export class NegotiationService {
       offerer: 'AI',
       amount: offer.recommended_total,
       currency: session.currency,
+      sessionStatus: nextStatus,
     };
     await this.kafka.publish(KAFKA_TOPICS.NEGOTIATION_OFFER_MADE, kafkaPayload, tenantId);
 

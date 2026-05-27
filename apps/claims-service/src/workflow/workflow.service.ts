@@ -62,11 +62,17 @@ export class WorkflowService implements OnModuleInit {
       KAFKA_TOPICS.NEGOTIATION_OFFER_MADE,
       'claims-service-negotiation-consumer',
       async (event) => {
-        const { claimId, round, offerer } = event.payload;
-        // Transition claim to NEGOTIATING when the first AI offer is sent
+        const { claimId, round, offerer, sessionStatus } = event.payload;
         if (round === 1 && offerer === 'AI') {
           await this.claims.updateStatus(event.tenantId, claimId, 'NEGOTIATING');
           this.logger.log(`Claim ${claimId} → NEGOTIATING (round 1 AI offer sent)`);
+        }
+        if (sessionStatus === 'AGREED') {
+          await this.claims.updateStatus(event.tenantId, claimId, 'SETTLED');
+          this.logger.log(`Claim ${claimId} → SETTLED (negotiation agreed)`);
+        } else if (sessionStatus === 'ESCALATED') {
+          await this.claims.updateStatus(event.tenantId, claimId, 'DISPUTED');
+          this.logger.log(`Claim ${claimId} → DISPUTED (negotiation escalated)`);
         }
       },
     );
