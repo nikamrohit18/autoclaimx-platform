@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { claimsApi, negotiationsApi, workshopsApi } from '@/lib/api';
+import { useClaimEvents } from '@/hooks/useClaimEvents';
 import { DamageViewer } from '@/components/damage/DamageViewer';
 import { FraudScoreCard } from '@/components/fraud/FraudScoreCard';
 import { NegotiationTimeline } from '@/components/negotiation/NegotiationTimeline';
@@ -23,6 +24,10 @@ export function ClaimDetail({ claimId }: ClaimDetailProps) {
   const loadClaim = useCallback(() => {
     claimsApi.get(claimId).then(setClaim).finally(() => setLoading(false));
   }, [claimId]);
+
+  const wsConnected = useClaimEvents(claimId, (status) => {
+    setClaim((prev) => prev ? { ...prev, status: status as Claim['status'] } : prev);
+  });
 
   useEffect(() => {
     loadClaim();
@@ -59,6 +64,12 @@ export function ClaimDetail({ claimId }: ClaimDetailProps) {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          {wsConnected && (
+            <span className="flex items-center gap-1 text-xs text-green-600">
+              <span className="inline-block w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+              Live
+            </span>
+          )}
           <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-medium">
             {claim.status.replace(/_/g, ' ')}
           </span>

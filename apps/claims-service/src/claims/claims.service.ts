@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { prisma, withTenant, ClaimStatus } from '@autoclaimx/db-client';
 import { KafkaService, KAFKA_TOPICS } from '../kafka/kafka.service';
+import { ClaimsGateway } from '../events/claims.gateway';
 import { ClaimCreatedPayload, DamageAnalyzedPayload } from '@autoclaimx/shared-types';
 import { CreateClaimDto } from './dto/create-claim.dto';
 import { v4 as uuidv4 } from 'uuid';
@@ -9,7 +10,10 @@ import { v4 as uuidv4 } from 'uuid';
 export class ClaimsService {
   private readonly logger = new Logger(ClaimsService.name);
 
-  constructor(private readonly kafka: KafkaService) {}
+  constructor(
+    private readonly kafka: KafkaService,
+    private readonly gateway: ClaimsGateway,
+  ) {}
 
   async create(tenantId: string, dto: CreateClaimDto) {
     const claimNumber = `CLM-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
@@ -98,6 +102,8 @@ export class ClaimsService {
       tenantId,
     );
 
+    this.gateway.emitStatusChanged(id, status);
+
     return claim;
   }
 
@@ -122,5 +128,72 @@ export class ClaimsService {
 
     await this.updateStatus(tenantId, payload.claimId, 'UNDER_ASSESSMENT');
     this.logger.log(`Damage report applied for claim ${payload.claimId}`);
+  }
+
+  async getAnalytics(tenantId: string) {
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+    const [statusGroups, recentCount, allFraud, agreedSessions, totalNegotiations, topRisk] = await withTenant(
+      tenantId,
+      (tx) =>
+        Promise.all([
+          tx.claim.groupBy({ by: ['status'], where: { tenantId }, _count: { _all: true } }),
+          tx.claim.count({ where: { tenantId, createdAt: { gte: thirtyDaysAgo } } }),
+          tx.fraudScore.findMany({ where: { tenantId }, select: { riskLevel: true } }),
+          tx.negotiationSession.findMany({
+            where: { tenantId, status: 'AGREED' },
+            select: { finalAmount: true, workshopEstimate: { select: { total: true } } },
+          }),
+          tx.negotiationSession.count({ where: { tenantId } }),
+          tx.fraudScore.findMany({
+            where: { tenantId, riskLevel: { in: ['HIGH', 'CRITICAL'] } },
+            orderBy: { totalScore: 'desc' },
+            take: 5,
+            include: { claim: { select: { claimNumber: true, status: true } } },
+          }),
+        ]),
+    );
+
+    const statusCounts: Record<string, number> = {};
+    for (const g of statusGroups) {
+      statusCounts[g.status] = g._count._all;
+    }
+    const totalClaims = Object.values(statusCounts).reduce((a, b) => a + b, 0);
+
+    const highRisk = allFraud.filter((f) => f.riskLevel === 'HIGH' || f.riskLevel === 'CRITICAL').length;
+
+    let totalSavingsPct = 0;
+    let savingsCount = 0;
+    for (const n of agreedSessions) {
+      const estTotal = Number(n.workshopEstimate?.total ?? 0);
+      const finalAmt = Number(n.finalAmount ?? 0);
+      if (estTotal > 0 && finalAmt > 0) {
+        totalSavingsPct += (estTotal - finalAmt) / estTotal;
+        savingsCount++;
+      }
+    }
+
+    return {
+      totalClaims,
+      claimsLast30Days: recentCount,
+      statusCounts,
+      fraudStats: {
+        withScore: allFraud.length,
+        highRisk,
+        detectionRate: allFraud.length > 0 ? +((highRisk / allFraud.length) * 100).toFixed(1) : 0,
+      },
+      negotiationStats: {
+        total: totalNegotiations,
+        agreed: agreedSessions.length,
+        avgSavingsPct: savingsCount > 0 ? +(totalSavingsPct / savingsCount * 100).toFixed(1) : 0,
+      },
+      topRiskClaims: topRisk.map((f) => ({
+        claimId: f.claimId,
+        claimNumber: f.claim.claimNumber,
+        status: f.claim.status,
+        riskLevel: f.riskLevel,
+        totalScore: +(Number(f.totalScore) * 100).toFixed(0),
+      })),
+    };
   }
 }

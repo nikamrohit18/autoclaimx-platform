@@ -4,8 +4,9 @@ import { WorkflowModule } from './workflow/workflow.module';
 import { FraudModule } from './fraud/fraud.module';
 import { HealthModule } from './health/health.module';
 import { KafkaModule } from './kafka/kafka.module';
+import { EventsModule } from './events/events.module';
 
 @Module({
-  imports: [KafkaModule, ClaimsModule, WorkflowModule, FraudModule, HealthModule],
+  imports: [KafkaModule, EventsModule, ClaimsModule, WorkflowModule, FraudModule, HealthModule],
 })
 export class AppModule {}

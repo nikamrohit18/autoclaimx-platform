@@ -39,6 +39,12 @@ export class ClaimsController {
     return this.claimsService.findAll(tenantId, Number(page ?? 1), Number(limit ?? 20), status);
   }
 
+  // Must be registered before :id to avoid "analytics" being matched as an id
+  @Get('analytics')
+  getAnalytics(@Headers('x-internal-tenant-id') tenantId: string) {
+    return this.claimsService.getAnalytics(tenantId);
+  }
+
   @Get(':id')
   findOne(
     @Headers('x-internal-tenant-id') tenantId: string,

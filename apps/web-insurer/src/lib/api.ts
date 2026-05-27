@@ -51,6 +51,12 @@ export const negotiationsApi = {
     api.post(`/negotiations/${sessionId}/counter`, body).then((r) => r.data),
 };
 
+// ── Analytics ────────────────────────────────────────────────────────────────
+
+export const analyticsApi = {
+  get: () => api.get('/claims/analytics').then((r) => r.data),
+};
+
 // ── Workshops ─────────────────────────────────────────────────────────────────
 
 export const workshopsApi = {
