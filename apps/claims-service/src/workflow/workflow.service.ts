@@ -2,7 +2,7 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { KafkaService, KAFKA_TOPICS } from '../kafka/kafka.service';
 import { ClaimsService } from '../claims/claims.service';
 import { FraudService } from '../fraud/fraud.service';
-import { ClaimCreatedPayload, DamageAnalyzedPayload, FraudScoreUpdatedPayload } from '@autoclaimx/shared-types';
+import { ClaimCreatedPayload, DamageAnalyzedPayload, FraudScoreUpdatedPayload, NegotiationOfferMadePayload } from '@autoclaimx/shared-types';
 
 // Kafka consumer: listens for AI pipeline results and advances claim workflow.
 @Injectable()
@@ -54,6 +54,19 @@ export class WorkflowService implements OnModuleInit {
         if (autoHold) {
           await this.claims.updateStatus(event.tenantId, claimId, 'DISPUTED');
           this.logger.warn(`Auto-held claim ${claimId} due to fraud score`);
+        }
+      },
+    );
+
+    await this.kafka.subscribe<NegotiationOfferMadePayload>(
+      KAFKA_TOPICS.NEGOTIATION_OFFER_MADE,
+      'claims-service-negotiation-consumer',
+      async (event) => {
+        const { claimId, round, offerer } = event.payload;
+        // Transition claim to NEGOTIATING when the first AI offer is sent
+        if (round === 1 && offerer === 'AI') {
+          await this.claims.updateStatus(event.tenantId, claimId, 'NEGOTIATING');
+          this.logger.log(`Claim ${claimId} → NEGOTIATING (round 1 AI offer sent)`);
         }
       },
     );

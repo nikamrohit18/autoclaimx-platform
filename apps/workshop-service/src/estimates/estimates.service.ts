@@ -1,9 +1,18 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { prisma, withTenant } from '@autoclaimx/db-client';
+import { withTenant } from '@autoclaimx/db-client';
 import axios from 'axios';
 import { v4 as uuidv4 } from 'uuid';
+
+interface OcrResponse {
+  line_items: unknown[];
+  subtotal: number;
+  labor_total: number;
+  parts_total: number;
+  total: number;
+  ocr_confidence: number;
+}
 
 @Injectable()
 export class EstimatesService {
@@ -30,15 +39,13 @@ export class EstimatesService {
   async confirmAndParse(tenantId: string, workshopId: string, claimId: string, s3Key: string) {
     const ocrUrl = process.env.OCR_EXTRACTION_URL ?? 'http://localhost:8004';
 
-    let lineItems: unknown[] = [];
-    let total = 0;
-    let ocrConfidence = 0;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let ocr: OcrResponse = { line_items: [], subtotal: 0, labor_total: 0, parts_total: 0, total: 0, ocr_confidence: 0 };
 
     try {
-      const { data } = await axios.post(`${ocrUrl}/parse/s3`, { s3_key: s3Key });
-      lineItems = data.line_items;
-      total = data.total;
-      ocrConfidence = data.ocr_confidence;
+      const { data } = await axios.post<OcrResponse>(`${ocrUrl}/parse/s3`, { s3_key: s3Key });
+      ocr = data;
+      this.logger.log(`OCR parsed ${ocr.line_items.length} line items for ${s3Key} (confidence=${ocr.ocr_confidence})`);
     } catch (err) {
       this.logger.error(`OCR extraction failed for ${s3Key}: ${err}`);
     }
@@ -51,9 +58,12 @@ export class EstimatesService {
           workshopId,
           claimId,
           rawFileUrl: s3Key,
-          lineItems: lineItems as never,
-          total,
-          ocrConfidence,
+          lineItems: ocr.line_items as object[],
+          subtotal: ocr.subtotal,
+          laborTotal: ocr.labor_total,
+          partsTotal: ocr.parts_total,
+          total: ocr.total,
+          ocrConfidence: ocr.ocr_confidence,
           currency: 'USD',
         },
       }),

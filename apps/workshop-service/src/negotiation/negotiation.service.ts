@@ -1,11 +1,15 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { prisma, withTenant } from '@autoclaimx/db-client';
+import { withTenant } from '@autoclaimx/db-client';
+import { NegotiationOfferMadePayload } from '@autoclaimx/shared-types';
+import { KafkaService, KAFKA_TOPICS } from '../kafka/kafka.service';
 import axios from 'axios';
 import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()
 export class NegotiationService {
   private readonly logger = new Logger(NegotiationService.name);
+
+  constructor(private readonly kafka: KafkaService) {}
 
   async startSession(tenantId: string, claimId: string, workshopId: string, workshopEstimateId: string) {
     const session = await withTenant(tenantId, (tx) =>
@@ -26,7 +30,6 @@ export class NegotiationService {
       }),
     );
 
-    // Trigger first AI offer
     await this.generateAiOffer(tenantId, session.id);
     return session;
   }
@@ -35,7 +38,11 @@ export class NegotiationService {
     const session = await withTenant(tenantId, (tx) =>
       tx.negotiationSession.findUnique({
         where: { id: sessionId },
-        include: { workshopEstimate: true, offers: { orderBy: { createdAt: 'asc' } } },
+        include: {
+          workshop: true,
+          workshopEstimate: true,
+          offers: { orderBy: { createdAt: 'asc' } },
+        },
       }),
     );
 
@@ -43,9 +50,10 @@ export class NegotiationService {
 
     const round = session.currentRound + 1;
 
-    // TODO: fetch damage report and benchmark data from claims-service and benchmark DB
-    const damageReport = {}; // placeholder
-    const benchmarkData = {}; // placeholder
+    // Fetch the claim's damage report directly from the shared DB
+    const damageReport = await withTenant(tenantId, (tx) =>
+      tx.damageReport.findUnique({ where: { claimId: session.claimId } }),
+    );
 
     const history = session.offers.map((o) => ({
       round: String(o.round),
@@ -59,18 +67,33 @@ export class NegotiationService {
 
     const { data: offer } = await axios.post(`${llmUrl}/generate-offer`, {
       claim_id: session.claimId,
-      workshop_name: 'Workshop',
+      workshop_name: session.workshop.name,
       current_round: round,
       max_rounds: session.maxRounds,
       style: session.style,
       currency: session.currency,
-      damage_report: damageReport,
-      workshop_estimate: session.workshopEstimate?.lineItems ?? {},
-      benchmark_data: benchmarkData,
+      damage_report: damageReport
+        ? {
+            overall_severity: damageReport.overallSeverity,
+            estimated_cost_min: Number(damageReport.estimatedCostMin),
+            estimated_cost_max: Number(damageReport.estimatedCostMax),
+            ai_damages: damageReport.aiDamages,
+          }
+        : {},
+      workshop_estimate: session.workshopEstimate
+        ? {
+            line_items: session.workshopEstimate.lineItems,
+            total: Number(session.workshopEstimate.total),
+            labor_total: Number(session.workshopEstimate.laborTotal),
+            parts_total: Number(session.workshopEstimate.partsTotal),
+            currency: session.workshopEstimate.currency,
+          }
+        : {},
+      benchmark_data: {},
       conversation_history: history,
     });
 
-    await withTenant(tenantId, (tx) =>
+    const savedOffer = await withTenant(tenantId, (tx) =>
       tx.negotiationOffer.create({
         data: {
           id: uuidv4(),
@@ -94,12 +117,26 @@ export class NegotiationService {
         data: {
           currentRound: round,
           status: nextStatus,
-          ...(nextStatus === 'AGREED' ? { finalAmount: offer.recommended_total, resolvedAt: new Date() } : {}),
+          ...(nextStatus === 'AGREED'
+            ? { finalAmount: offer.recommended_total, resolvedAt: new Date() }
+            : {}),
+          ...(nextStatus === 'ESCALATED' ? { resolvedAt: new Date() } : {}),
         },
       }),
     );
 
-    this.logger.log(`AI offer round ${round} for session ${sessionId}: ${offer.recommended_total}`);
+    const kafkaPayload: NegotiationOfferMadePayload = {
+      claimId: session.claimId,
+      negotiationId: sessionId,
+      offerId: savedOffer.id,
+      round,
+      offerer: 'AI',
+      amount: offer.recommended_total,
+      currency: session.currency,
+    };
+    await this.kafka.publish(KAFKA_TOPICS.NEGOTIATION_OFFER_MADE, kafkaPayload, tenantId);
+
+    this.logger.log(`AI offer round ${round} for session ${sessionId}: ${offer.recommended_total} (${nextStatus})`);
     return offer;
   }
 
@@ -109,7 +146,7 @@ export class NegotiationService {
     );
     if (!session) throw new NotFoundException('Session not found');
 
-    await withTenant(tenantId, (tx) =>
+    const counterOffer = await withTenant(tenantId, (tx) =>
       tx.negotiationOffer.create({
         data: {
           id: uuidv4(),
@@ -128,7 +165,17 @@ export class NegotiationService {
       tx.negotiationSession.update({ where: { id: sessionId }, data: { status: 'COUNTER_RECEIVED' } }),
     );
 
-    // Trigger next AI offer
+    const workshopPayload: NegotiationOfferMadePayload = {
+      claimId: session.claimId,
+      negotiationId: sessionId,
+      offerId: counterOffer.id,
+      round: session.currentRound,
+      offerer: 'WORKSHOP',
+      amount,
+      currency: session.currency,
+    };
+    await this.kafka.publish(KAFKA_TOPICS.NEGOTIATION_OFFER_MADE, workshopPayload, tenantId);
+
     return this.generateAiOffer(tenantId, sessionId);
   }
 
@@ -136,7 +183,7 @@ export class NegotiationService {
     return withTenant(tenantId, (tx) =>
       tx.negotiationSession.findUnique({
         where: { claimId },
-        include: { offers: { orderBy: { createdAt: 'asc' } } },
+        include: { offers: { orderBy: { createdAt: 'asc' } }, workshop: true },
       }),
     );
   }
