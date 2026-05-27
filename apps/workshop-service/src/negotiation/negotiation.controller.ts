@@ -1,30 +1,34 @@
 import { Body, Controller, Get, Param, Post, Headers } from '@nestjs/common';
 import { NegotiationService } from './negotiation.service';
 
-@Controller('claims/:claimId/negotiation')
+@Controller('negotiations')
 export class NegotiationController {
   constructor(private readonly negotiation: NegotiationService) {}
 
   @Post()
   start(
     @Headers('x-internal-tenant-id') tid: string,
-    @Param('claimId') claimId: string,
-    @Body() body: { workshopId: string; workshopEstimateId: string },
+    @Body() body: { claimId: string; workshopId: string; workshopEstimateId: string },
   ) {
-    return this.negotiation.startSession(tid, claimId, body.workshopId, body.workshopEstimateId);
+    return this.negotiation.startSession(tid, body.claimId, body.workshopId, body.workshopEstimateId);
   }
 
-  @Get()
-  get(@Headers('x-internal-tenant-id') tid: string, @Param('claimId') claimId: string) {
+  @Get('claim/:claimId')
+  getByClaimId(@Headers('x-internal-tenant-id') tid: string, @Param('claimId') claimId: string) {
     return this.negotiation.getSession(tid, claimId);
   }
 
-  @Post('counter')
+  @Get('workshop/:workshopId')
+  getByWorkshop(@Headers('x-internal-tenant-id') tid: string, @Param('workshopId') workshopId: string) {
+    return this.negotiation.getSessionsByWorkshop(tid, workshopId);
+  }
+
+  @Post(':sessionId/counter')
   counter(
     @Headers('x-internal-tenant-id') tid: string,
-    @Param('claimId') claimId: string,
-    @Body() body: { sessionId: string; amount: number; message: string },
+    @Param('sessionId') sessionId: string,
+    @Body() body: { amount: number; message: string },
   ) {
-    return this.negotiation.workshopCounter(tid, body.sessionId, body.amount, body.message);
+    return this.negotiation.workshopCounter(tid, sessionId, body.amount, body.message);
   }
 }

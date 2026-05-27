@@ -1,11 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { claimsApi } from '@/lib/api';
+import { useCallback, useEffect, useState } from 'react';
+import { claimsApi, negotiationsApi, workshopsApi } from '@/lib/api';
 import { DamageViewer } from '@/components/damage/DamageViewer';
 import { FraudScoreCard } from '@/components/fraud/FraudScoreCard';
 import { NegotiationTimeline } from '@/components/negotiation/NegotiationTimeline';
-import type { Claim } from '@autoclaimx/shared-types';
+import type { Claim, Workshop, WorkshopEstimate } from '@autoclaimx/shared-types';
 
 interface ClaimDetailProps {
   claimId: string;
@@ -13,19 +13,40 @@ interface ClaimDetailProps {
 
 export function ClaimDetail({ claimId }: ClaimDetailProps) {
   const [claim, setClaim] = useState<Claim | null>(null);
+  const [workshops, setWorkshops] = useState<Workshop[]>([]);
+  const [selectedWorkshopId, setSelectedWorkshopId] = useState('');
+  const [estimates, setEstimates] = useState<WorkshopEstimate[]>([]);
+  const [selectedEstimateId, setSelectedEstimateId] = useState('');
+  const [startingNeg, setStartingNeg] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+  const loadClaim = useCallback(() => {
     claimsApi.get(claimId).then(setClaim).finally(() => setLoading(false));
-
-    // WebSocket: subscribe to real-time claim updates
-    const wsUrl = process.env.NEXT_PUBLIC_WS_URL ?? 'ws://localhost:3000';
-    const token = localStorage.getItem('acx_access_token');
-    // Socket.io connection would go here (wired in Week 3-4)
   }, [claimId]);
+
+  useEffect(() => {
+    loadClaim();
+    workshopsApi.list().then((data: Workshop[]) => {
+      setWorkshops(data);
+      if (data.length > 0) setSelectedWorkshopId(data[0].id);
+    });
+  }, [loadClaim]);
+
+  async function handleStartNegotiation() {
+    if (!selectedWorkshopId || !selectedEstimateId) return;
+    setStartingNeg(true);
+    try {
+      await negotiationsApi.start({ claimId, workshopId: selectedWorkshopId, workshopEstimateId: selectedEstimateId });
+      loadClaim();
+    } finally {
+      setStartingNeg(false);
+    }
+  }
 
   if (loading) return <div className="text-center py-12 text-sm text-gray-500">Loading claim...</div>;
   if (!claim) return <div className="text-center py-12 text-sm text-red-600">Claim not found</div>;
+
+  const canStartNeg = claim.damageReport && !claim.negotiation && claim.status === 'UNDER_ASSESSMENT';
 
   return (
     <div className="space-y-6">
@@ -41,9 +62,9 @@ export function ClaimDetail({ claimId }: ClaimDetailProps) {
           <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-medium">
             {claim.status.replace(/_/g, ' ')}
           </span>
-          {claim.negotiation && (
+          {claim.negotiation?.finalAmount != null && (
             <span className="text-sm text-gray-500">
-              Settlement: <strong>{claim.negotiation.currency} {Number(claim.negotiation.finalAmount ?? 0).toLocaleString()}</strong>
+              Settlement: <strong>{claim.negotiation.currency} {Number(claim.negotiation.finalAmount).toLocaleString()}</strong>
             </span>
           )}
         </div>
@@ -70,8 +91,48 @@ export function ClaimDetail({ claimId }: ClaimDetailProps) {
       {/* Fraud Score */}
       {claim.fraudScore && <FraudScoreCard fraudScore={claim.fraudScore} />}
 
-      {/* Negotiation */}
-      {claim.negotiation && <NegotiationTimeline negotiation={claim.negotiation} claimId={claimId} />}
+      {/* Start Negotiation */}
+      {canStartNeg && (
+        <div className="bg-white rounded-lg border p-6 space-y-4">
+          <h2 className="text-lg font-semibold">Start AI Negotiation</h2>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Workshop</label>
+              <select
+                value={selectedWorkshopId}
+                onChange={(e) => setSelectedWorkshopId(e.target.value)}
+                className="w-full border rounded-md px-3 py-2 text-sm"
+              >
+                {workshops.map((w) => (
+                  <option key={w.id} value={w.id}>{w.name}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Workshop Estimate ID</label>
+              <input
+                type="text"
+                value={selectedEstimateId}
+                onChange={(e) => setSelectedEstimateId(e.target.value)}
+                placeholder="Paste estimate ID"
+                className="w-full border rounded-md px-3 py-2 text-sm"
+              />
+            </div>
+          </div>
+          <button
+            onClick={handleStartNegotiation}
+            disabled={startingNeg || !selectedWorkshopId || !selectedEstimateId}
+            className="px-4 py-2 bg-purple-600 text-white text-sm rounded-md hover:bg-purple-700 disabled:opacity-50"
+          >
+            {startingNeg ? 'Starting...' : 'Start AI Negotiation'}
+          </button>
+        </div>
+      )}
+
+      {/* Negotiation Timeline */}
+      {claim.negotiation && (
+        <NegotiationTimeline negotiation={claim.negotiation} onRefresh={loadClaim} />
+      )}
     </div>
   );
 }

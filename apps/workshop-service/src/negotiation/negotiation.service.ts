@@ -187,4 +187,14 @@ export class NegotiationService {
       }),
     );
   }
+
+  async getSessionsByWorkshop(tenantId: string, workshopId: string) {
+    return withTenant(tenantId, (tx) =>
+      tx.negotiationSession.findMany({
+        where: { workshopId, tenantId },
+        include: { offers: { orderBy: { createdAt: 'asc' } } },
+        orderBy: { createdAt: 'desc' },
+      }),
+    );
+  }
 }

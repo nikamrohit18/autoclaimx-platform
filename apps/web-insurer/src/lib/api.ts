@@ -37,9 +37,24 @@ export const claimsApi = {
   getDamageReport: (claimId: string) => api.get(`/claims/${claimId}/damage-report`).then((r) => r.data),
 
   getFraudScore: (claimId: string) => api.get(`/claims/${claimId}/fraud-score`).then((r) => r.data),
+};
 
-  startNegotiation: (claimId: string, body: { workshopId: string; workshopEstimateId: string }) =>
-    api.post(`/claims/${claimId}/negotiation`, body).then((r) => r.data),
+// ── Negotiations ──────────────────────────────────────────────────────────────
 
-  getNegotiation: (claimId: string) => api.get(`/claims/${claimId}/negotiation`).then((r) => r.data),
+export const negotiationsApi = {
+  start: (body: { claimId: string; workshopId: string; workshopEstimateId: string }) =>
+    api.post('/negotiations', body).then((r) => r.data),
+
+  getByClaimId: (claimId: string) => api.get(`/negotiations/claim/${claimId}`).then((r) => r.data),
+
+  counter: (sessionId: string, body: { amount: number; message: string }) =>
+    api.post(`/negotiations/${sessionId}/counter`, body).then((r) => r.data),
+};
+
+// ── Workshops ─────────────────────────────────────────────────────────────────
+
+export const workshopsApi = {
+  list: () => api.get('/workshops').then((r) => r.data),
+
+  get: (id: string) => api.get(`/workshops/${id}`).then((r) => r.data),
 };

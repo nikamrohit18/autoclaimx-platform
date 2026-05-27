@@ -8,6 +8,7 @@ type ServiceName = 'claims' | 'workshop' | 'admin';
 const SERVICE_MAP: Record<string, ServiceName> = {
   claims: 'claims',
   workshops: 'workshop',
+  negotiations: 'workshop',
   tenants: 'admin',
   users: 'admin',
 };
@@ -17,10 +18,9 @@ const SERVICE_MAP: Record<string, ServiceName> = {
 export class ProxyController {
   constructor(private readonly proxyService: ProxyService) {}
 
-  // Matches both /claims and /claims/anything/nested
   @All([
-    ':resource(claims|workshops|tenants|users)',
-    ':resource(claims|workshops|tenants|users)/*',
+    ':resource(claims|workshops|negotiations|tenants|users)',
+    ':resource(claims|workshops|negotiations|tenants|users)/*',
   ])
   proxy(
     @Req() req: Request & { user: { tenantId: string } },

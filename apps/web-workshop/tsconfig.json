@@ -12,6 +12,9 @@
     "jsx": "preserve",
     "allowJs": true,
     "outDir": "./.next",
+    "paths": {
+      "@/*": ["./src/*"]
+    },
     "noEmit": true,
     "incremental": true,
     "isolatedModules": true,

@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { login } from '@/lib/api';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -15,23 +16,10 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
     setError('');
-
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password, tenantSlug }),
-      });
-
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.message ?? 'Login failed');
-      }
-
-      const { accessToken, refreshToken } = await res.json();
-      localStorage.setItem('acx_access_token', accessToken);
-      localStorage.setItem('acx_refresh_token', refreshToken);
-      router.push('/claims');
+      const { accessToken } = await login(email, password, tenantSlug);
+      localStorage.setItem('acx_ws_token', accessToken);
+      router.push('/negotiation');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed');
     } finally {
@@ -44,7 +32,7 @@ export default function LoginPage() {
       <div className="max-w-md w-full space-y-8 p-8 bg-white rounded-xl shadow-sm border">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">AutoClaimX</h1>
-          <p className="mt-1 text-sm text-gray-500">Claims Intelligence Platform</p>
+          <p className="mt-1 text-sm text-gray-500">Workshop Portal</p>
         </div>
 
         <form className="space-y-4" onSubmit={handleSubmit}>
@@ -55,53 +43,47 @@ export default function LoginPage() {
           )}
 
           <div>
-            <label htmlFor="tenantSlug" className="block text-sm font-medium text-gray-700 mb-1">
-              Tenant
-            </label>
+            <label htmlFor="tenantSlug" className="block text-sm font-medium text-gray-700 mb-1">Tenant</label>
             <input
               id="tenantSlug"
               type="text"
               required
               value={tenantSlug}
               onChange={(e) => setTenantSlug(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="stellar-insurance"
             />
           </div>
 
           <div>
-            <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
-              Email
-            </label>
+            <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">Email</label>
             <input
               id="email"
               type="email"
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              placeholder="adjuster@insurer.com"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="workshop@repair.com"
             />
           </div>
 
           <div>
-            <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
-              Password
-            </label>
+            <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">Password</label>
             <input
               id="password"
               type="password"
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full flex justify-center py-2.5 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full py-2.5 px-4 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 disabled:opacity-50"
           >
             {loading ? 'Signing in...' : 'Sign in'}
           </button>

@@ -1,62 +1,82 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import axios from 'axios';
-
-const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
-
-interface Offer {
-  id: string;
-  round: number;
-  offerer: 'AI' | 'WORKSHOP';
-  amount: number;
-  currency: string;
-  message: string;
-  createdAt: string;
-}
-
-interface Session {
-  id: string;
-  claimId: string;
-  status: string;
-  currentRound: number;
-  maxRounds: number;
-  finalAmount?: number;
-  currency: string;
-  offers: Offer[];
-}
+import { useCallback, useEffect, useState } from 'react';
+import { workshopsApi, negotiationsApi, NegotiationSession } from '@/lib/api';
 
 export default function NegotiationPage() {
-  const [sessions, setSessions] = useState<Session[]>([]);
-  const [selected, setSelected] = useState<Session | null>(null);
+  const [workshopId, setWorkshopId] = useState<string | null>(null);
+  const [sessions, setSessions] = useState<NegotiationSession[]>([]);
+  const [selected, setSelected] = useState<NegotiationSession | null>(null);
   const [counterAmount, setCounterAmount] = useState('');
   const [counterMessage, setCounterMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  // In production this fetches from the API using the workshop's JWT
-  // placeholder: no sessions until wired to API
-  const token = typeof window !== 'undefined' ? localStorage.getItem('acx_access_token') : '';
+  const loadSessions = useCallback(async (wId: string) => {
+    const data = await negotiationsApi.getByWorkshop(wId);
+    setSessions(data);
+    if (selected) {
+      const refreshed = data.find((s) => s.id === selected.id);
+      if (refreshed) setSelected(refreshed);
+    }
+  }, [selected]);
+
+  useEffect(() => {
+    workshopsApi.list().then((ws) => {
+      if (ws.length === 0) { setLoading(false); return; }
+      const wId = ws[0].id;
+      setWorkshopId(wId);
+      return loadSessions(wId);
+    }).finally(() => setLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function handleCounter(e: React.FormEvent) {
     e.preventDefault();
-    if (!selected) return;
+    if (!selected || !workshopId) return;
     setSubmitting(true);
     try {
-      await axios.post(
-        `${API}/api/v1/claims/${selected.claimId}/negotiation/counter`,
-        { sessionId: selected.id, amount: Number(counterAmount), message: counterMessage },
-        { headers: { Authorization: `Bearer ${token}` } },
-      );
+      await negotiationsApi.counter(selected.id, {
+        amount: Number(counterAmount),
+        message: counterMessage,
+      });
       setCounterAmount('');
       setCounterMessage('');
-      // Refresh
+      await loadSessions(workshopId);
     } finally {
       setSubmitting(false);
     }
   }
 
+  async function handleAccept() {
+    if (!selected || !workshopId) return;
+    setSubmitting(true);
+    try {
+      const latestAiOffer = [...selected.offers].reverse().find((o) => o.offerer === 'AI');
+      if (!latestAiOffer) return;
+      await negotiationsApi.counter(selected.id, {
+        amount: latestAiOffer.amount,
+        message: 'Accepted AI offer.',
+      });
+      await loadSessions(workshopId);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const statusLabel: Record<string, string> = {
+    PENDING: 'Pending',
+    OFFER_SENT: 'AI Offer Sent',
+    COUNTER_RECEIVED: 'Counter Received',
+    AGREED: 'Agreed',
+    ESCALATED: 'Escalated',
+    ABANDONED: 'Abandoned',
+  };
+
+  if (loading) return <div className="text-center py-12 text-sm text-gray-500">Loading...</div>;
+
   return (
-    <div className="max-w-4xl mx-auto py-8 px-6 space-y-6">
+    <div className="space-y-6">
       <h1 className="text-2xl font-semibold text-gray-900">Negotiation Center</h1>
 
       {sessions.length === 0 && (
@@ -65,19 +85,64 @@ export default function NegotiationPage() {
         </div>
       )}
 
+      {sessions.length > 0 && !selected && (
+        <div className="space-y-3">
+          {sessions.map((s) => (
+            <button
+              key={s.id}
+              onClick={() => setSelected(s)}
+              className="w-full text-left bg-white rounded-lg border p-4 hover:border-blue-300 transition-colors"
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="font-medium text-gray-900 text-sm">Claim {s.claimId.slice(0, 8)}…</div>
+                  <div className="text-xs text-gray-500 mt-0.5">Round {s.currentRound}/{s.maxRounds}</div>
+                </div>
+                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                  s.status === 'AGREED' ? 'bg-green-100 text-green-700' :
+                  s.status === 'ESCALATED' ? 'bg-yellow-100 text-yellow-700' :
+                  s.status === 'OFFER_SENT' ? 'bg-blue-100 text-blue-700' :
+                  'bg-gray-100 text-gray-600'
+                }`}>
+                  {statusLabel[s.status] ?? s.status}
+                </span>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+
       {selected && (
         <div className="bg-white rounded-lg border p-6 space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="font-semibold">Claim {selected.claimId}</h2>
+            <div>
+              <button onClick={() => setSelected(null)} className="text-xs text-blue-600 hover:underline mb-1">
+                ← All negotiations
+              </button>
+              <h2 className="font-semibold text-gray-900">Claim {selected.claimId.slice(0, 8)}…</h2>
+            </div>
             <span className="text-sm text-gray-500">Round {selected.currentRound}/{selected.maxRounds}</span>
           </div>
 
+          {selected.status === 'AGREED' && (
+            <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded text-sm font-medium">
+              Agreed: {selected.currency} {Number(selected.finalAmount ?? 0).toLocaleString()}
+            </div>
+          )}
+
           <div className="space-y-3">
             {selected.offers.map((offer) => (
-              <div key={offer.id} className={`p-4 rounded-lg ${offer.offerer === 'AI' ? 'bg-blue-50 border border-blue-100' : 'bg-gray-50'}`}>
+              <div
+                key={offer.id}
+                className={`p-4 rounded-lg ${offer.offerer === 'AI' ? 'bg-blue-50 border border-blue-100' : 'bg-gray-50 border border-gray-200'}`}
+              >
                 <div className="flex items-center gap-2 mb-1">
-                  <span className="text-xs text-gray-500">{offer.offerer === 'AI' ? 'Insurance AI' : 'Your Offer'} · Round {offer.round}</span>
-                  <span className="font-semibold text-gray-900">{offer.currency} {offer.amount.toLocaleString()}</span>
+                  <span className="text-xs text-gray-500">
+                    {offer.offerer === 'AI' ? 'Insurance AI' : 'Your Offer'} · Round {offer.round}
+                  </span>
+                  <span className="font-semibold text-gray-900">
+                    {offer.currency} {Number(offer.amount).toLocaleString()}
+                  </span>
                 </div>
                 <p className="text-sm text-gray-700">{offer.message}</p>
               </div>
@@ -112,8 +177,9 @@ export default function NegotiationPage() {
               <div className="flex gap-3">
                 <button
                   type="button"
-                  onClick={() => {/* Accept current AI offer */}}
-                  className="px-4 py-2 border border-green-500 text-green-600 text-sm rounded hover:bg-green-50"
+                  onClick={handleAccept}
+                  disabled={submitting}
+                  className="px-4 py-2 border border-green-500 text-green-600 text-sm rounded hover:bg-green-50 disabled:opacity-50"
                 >
                   Accept AI Offer
                 </button>
@@ -126,12 +192,6 @@ export default function NegotiationPage() {
                 </button>
               </div>
             </form>
-          )}
-
-          {selected.status === 'AGREED' && (
-            <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded text-sm font-medium">
-              Agreed: {selected.currency} {Number(selected.finalAmount ?? 0).toLocaleString()}
-            </div>
           )}
         </div>
       )}

@@ -1,15 +1,15 @@
 'use client';
 
 import { useState } from 'react';
-import { claimsApi } from '@/lib/api';
+import { negotiationsApi } from '@/lib/api';
 import type { Negotiation, NegotiationOffer } from '@autoclaimx/shared-types';
 
 interface NegotiationTimelineProps {
   negotiation: Negotiation;
-  claimId: string;
+  onRefresh?: () => void;
 }
 
-export function NegotiationTimeline({ negotiation, claimId }: NegotiationTimelineProps) {
+export function NegotiationTimeline({ negotiation, onRefresh }: NegotiationTimelineProps) {
   const [counterAmount, setCounterAmount] = useState('');
   const [counterMessage, setCounterMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -20,23 +20,26 @@ export function NegotiationTimeline({ negotiation, claimId }: NegotiationTimelin
     e.preventDefault();
     setSubmitting(true);
     try {
-      await claimsApi.startNegotiation(claimId, {
-        workshopId: negotiation.workshopId,
-        workshopEstimateId: negotiation.workshopEstimateId ?? '',
+      await negotiationsApi.counter(negotiation.id, {
+        amount: Number(counterAmount),
+        message: counterMessage,
       });
+      setCounterAmount('');
+      setCounterMessage('');
+      onRefresh?.();
     } finally {
       setSubmitting(false);
     }
   }
 
-  const statusLabel = {
+  const statusLabel: Record<string, string> = {
     PENDING: 'Awaiting AI Analysis',
     OFFER_SENT: 'AI Offer Sent',
     COUNTER_RECEIVED: 'Workshop Counter Received',
     AGREED: 'Agreed',
     ESCALATED: 'Escalated to Adjuster',
     ABANDONED: 'Abandoned',
-  }[negotiation.status];
+  };
 
   return (
     <div className="bg-white rounded-lg border p-6 space-y-4">
@@ -47,20 +50,19 @@ export function NegotiationTimeline({ negotiation, claimId }: NegotiationTimelin
             Round {negotiation.currentRound} / {negotiation.maxRounds}
           </span>
           <span className="px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-xs font-medium">
-            {statusLabel}
+            {statusLabel[negotiation.status] ?? negotiation.status}
           </span>
         </div>
       </div>
 
-      {negotiation.finalAmount && (
+      {negotiation.finalAmount != null && (
         <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-md text-sm font-medium">
           Final settlement: {negotiation.currency} {Number(negotiation.finalAmount).toLocaleString()}
         </div>
       )}
 
-      {/* Offer timeline */}
       <div className="space-y-3">
-        {offers.map((offer, i) => (
+        {offers.map((offer) => (
           <div
             key={offer.id}
             className={`flex ${offer.offerer === 'AI' ? 'justify-start' : 'justify-end'}`}
@@ -87,6 +89,12 @@ export function NegotiationTimeline({ negotiation, claimId }: NegotiationTimelin
       {negotiation.status === 'OFFER_SENT' && (
         <div className="text-xs text-center text-gray-400 italic">
           Workshop portal notified — awaiting response
+        </div>
+      )}
+
+      {negotiation.status === 'ESCALATED' && (
+        <div className="bg-yellow-50 border border-yellow-200 text-yellow-700 px-4 py-3 rounded-md text-sm">
+          Escalated for manual adjuster review
         </div>
       )}
     </div>
