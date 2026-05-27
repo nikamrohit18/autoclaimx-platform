@@ -1,7 +1,8 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { KafkaService, KAFKA_TOPICS } from '../kafka/kafka.service';
 import { ClaimsService } from '../claims/claims.service';
-import { DamageAnalyzedPayload, FraudScoreUpdatedPayload } from '@autoclaimx/shared-types';
+import { FraudService } from '../fraud/fraud.service';
+import { ClaimCreatedPayload, DamageAnalyzedPayload, FraudScoreUpdatedPayload } from '@autoclaimx/shared-types';
 
 // Kafka consumer: listens for AI pipeline results and advances claim workflow.
 @Injectable()
@@ -11,9 +12,24 @@ export class WorkflowService implements OnModuleInit {
   constructor(
     private readonly kafka: KafkaService,
     private readonly claims: ClaimsService,
+    private readonly fraud: FraudService,
   ) {}
 
   async onModuleInit() {
+    await this.kafka.subscribe<ClaimCreatedPayload>(
+      KAFKA_TOPICS.CLAIM_CREATED,
+      'claims-service-claim-consumer',
+      async (event) => {
+        this.logger.log(`Claim created: ${event.payload.claimId} — running behavioral fraud check`);
+        await this.fraud.scoreBehavioral(
+          event.tenantId,
+          event.payload.claimId,
+          event.payload.policyHolderId,
+          event.payload.vehiclePlate,
+        );
+      },
+    );
+
     await this.kafka.subscribe<DamageAnalyzedPayload>(
       KAFKA_TOPICS.DAMAGE_ANALYZED,
       'claims-service-damage-consumer',

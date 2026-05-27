@@ -102,18 +102,21 @@ export class ClaimsService {
   }
 
   async applyDamageAnalyzed(tenantId: string, payload: DamageAnalyzedPayload) {
+    const reportData = {
+      processingStatus: 'COMPLETE' as const,
+      overallSeverity: payload.overallSeverity,
+      totalLossProbability: payload.totalLossProbability,
+      estimatedCostMin: payload.estimatedCostMin,
+      estimatedCostMax: payload.estimatedCostMax,
+      currency: payload.currency,
+      processedAt: new Date(),
+    };
+
     await withTenant(tenantId, (tx) =>
-      tx.damageReport.update({
+      tx.damageReport.upsert({
         where: { claimId: payload.claimId },
-        data: {
-          processingStatus: 'COMPLETE',
-          overallSeverity: payload.overallSeverity,
-          totalLossProbability: payload.totalLossProbability,
-          estimatedCostMin: payload.estimatedCostMin,
-          estimatedCostMax: payload.estimatedCostMax,
-          currency: payload.currency,
-          processedAt: new Date(),
-        },
+        create: { id: uuidv4(), tenantId, claimId: payload.claimId, modelVersion: '', ...reportData },
+        update: reportData,
       }),
     );
 

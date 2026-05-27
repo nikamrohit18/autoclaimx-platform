@@ -11,6 +11,7 @@ import {
 import { ClaimsService } from './claims.service';
 import { MediaService } from './media.service';
 import { CreateClaimDto } from './dto/create-claim.dto';
+import { ConfirmMediaUploadDto } from './dto/confirm-media.dto';
 import { ClaimStatus } from '@autoclaimx/db-client';
 
 @Controller('claims')
@@ -62,6 +63,22 @@ export class ClaimsController {
     @Body() body: { contentType: string; angleTag: string; fileName: string },
   ) {
     return this.mediaService.generatePresignedUploadUrl(tenantId, claimId, body);
+  }
+
+  @Post(':id/media/confirm')
+  confirmMedia(
+    @Headers('x-internal-tenant-id') tenantId: string,
+    @Param('id') claimId: string,
+    @Body() dto: ConfirmMediaUploadDto,
+  ) {
+    return this.mediaService.confirmUpload(
+      tenantId,
+      claimId,
+      dto.mediaAssetId,
+      dto.s3Key,
+      dto.contentType,
+      dto.sizeBytes,
+    );
   }
 
   @Get(':id/damage-report')

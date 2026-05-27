@@ -1,6 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { withTenant, MediaType } from '@autoclaimx/db-client';
 import { KafkaService, KAFKA_TOPICS } from '../kafka/kafka.service';
 import { MediaUploadedPayload } from '@autoclaimx/shared-types';
 import { v4 as uuidv4 } from 'uuid';
@@ -34,23 +35,64 @@ export class MediaService {
       },
     });
 
-    const uploadUrl = await getSignedUrl(this.s3, command, { expiresIn: 900 }); // 15 min
+    const uploadUrl = await getSignedUrl(this.s3, command, { expiresIn: 900 });
 
-    // Publish upload event so damage-detection can pick it up when the client
-    // confirms the upload is complete via a separate POST /confirm endpoint.
+    await withTenant(tenantId, (tx) =>
+      tx.claimMedia.create({
+        data: {
+          id: mediaAssetId,
+          tenantId,
+          claimId,
+          s3Key,
+          s3Bucket: this.bucket,
+          mimeType: opts.contentType,
+          mediaType: this.resolveMediaType(opts.contentType),
+          sizeBytes: 0,
+        },
+      }),
+    );
+
     return { uploadUrl, mediaAssetId, s3Key, expiresIn: 900 };
   }
 
-  async confirmUpload(tenantId: string, claimId: string, mediaAssetId: string, s3Key: string, contentType: string, sizeBytes: number) {
-    const payload: MediaUploadedPayload = {
-      claimId,
-      mediaAssetId,
-      s3Key,
-      contentType,
-      sizeBytes,
-    };
+  async confirmUpload(
+    tenantId: string,
+    claimId: string,
+    mediaAssetId: string,
+    s3Key: string,
+    contentType: string,
+    sizeBytes: number,
+  ) {
+    const existing = await withTenant(tenantId, (tx) =>
+      tx.claimMedia.findFirst({ where: { id: mediaAssetId, claimId, tenantId } }),
+    );
+    if (!existing) throw new NotFoundException(`Media asset ${mediaAssetId} not found`);
 
+    await withTenant(tenantId, (tx) =>
+      tx.claimMedia.update({
+        where: { id: mediaAssetId },
+        data: { processingStatus: 'PROCESSING', sizeBytes, mimeType: contentType },
+      }),
+    );
+
+    // Only advance to MEDIA_PROCESSING from FNOL_RECEIVED
+    await withTenant(tenantId, (tx) =>
+      tx.claim.updateMany({
+        where: { id: claimId, tenantId, status: 'FNOL_RECEIVED' },
+        data: { status: 'MEDIA_PROCESSING' },
+      }),
+    );
+
+    const payload: MediaUploadedPayload = { claimId, mediaAssetId, s3Key, contentType, sizeBytes };
     await this.kafka.publish(KAFKA_TOPICS.MEDIA_UPLOADED, payload, tenantId);
     this.logger.log(`Media ${mediaAssetId} confirmed for claim ${claimId}`);
+
+    return { mediaAssetId, claimId, processingStatus: 'PROCESSING' };
+  }
+
+  private resolveMediaType(contentType: string): MediaType {
+    if (contentType.startsWith('video/')) return 'VIDEO';
+    if (contentType === 'application/pdf') return 'DOCUMENT';
+    return 'IMAGE';
   }
 }

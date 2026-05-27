@@ -38,11 +38,12 @@ export class FraudService {
     const riskLevel: FraudRisk = behavioralScore >= 0.6 ? 'HIGH' : behavioralScore >= 0.3 ? 'MEDIUM' : 'LOW';
     const autoHoldThreshold = 0.75;
 
+    const fraudScoreId = uuidv4();
     await withTenant(tenantId, (tx) =>
       tx.fraudScore.upsert({
         where: { claimId },
         create: {
-          id: uuidv4(),
+          id: fraudScoreId,
           tenantId,
           claimId,
           behavioralScore,
@@ -56,7 +57,7 @@ export class FraudService {
 
     const payload: FraudScoreUpdatedPayload = {
       claimId,
-      fraudScoreId: claimId,
+      fraudScoreId,
       totalScore: behavioralScore * 0.35,
       riskLevel,
       autoHold: behavioralScore >= autoHoldThreshold,
