@@ -1,4 +1,18 @@
 import { z } from 'zod';
+import { config } from 'dotenv';
+import { resolve, dirname } from 'path';
+import { existsSync } from 'fs';
+
+function loadRootEnv() {
+  let dir = process.cwd();
+  for (let i = 0; i < 6; i++) {
+    const p = resolve(dir, '.env');
+    if (existsSync(p)) { config({ path: p, override: false }); return; }
+    const parent = dirname(dir);
+    if (parent === dir) return;
+    dir = parent;
+  }
+}
 
 // Shared env schema imported by all NestJS services.
 // Each service extends this with service-specific vars.
@@ -52,6 +66,7 @@ export const apiGatewayEnvSchema = baseEnvSchema.extend({
 });
 
 export function validateEnv<T extends z.ZodTypeAny>(schema: T): z.infer<T> {
+  loadRootEnv();
   const result = schema.safeParse(process.env);
   if (!result.success) {
     console.error('❌ Invalid environment variables:');

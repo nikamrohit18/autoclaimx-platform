@@ -12,6 +12,7 @@ export class NegotiationService {
       tx.negotiationSession.create({
         data: {
           id: uuidv4(),
+          tenantId,
           claimId,
           workshopId,
           workshopEstimateId,

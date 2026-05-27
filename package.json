@@ -10,7 +10,7 @@
     "db:generate": "pnpm --filter @autoclaimx/db-client exec prisma generate",
     "db:migrate": "pnpm --filter @autoclaimx/db-client exec prisma migrate dev",
     "db:push": "pnpm --filter @autoclaimx/db-client exec prisma db push",
-    "db:seed": "pnpm --filter @autoclaimx/db-client exec ts-node src/seed.ts",
+    "db:seed": "pnpm --filter @autoclaimx/db-client exec tsx src/seed.ts",
     "infra:up": "docker-compose -f docker-compose.infra.yml up -d",
     "infra:down": "docker-compose -f docker-compose.infra.yml down",
     "up": "docker-compose up -d",

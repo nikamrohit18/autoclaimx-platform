@@ -47,6 +47,7 @@ export class EstimatesService {
       tx.workshopEstimate.create({
         data: {
           id: uuidv4(),
+          tenantId,
           workshopId,
           claimId,
           rawFileUrl: s3Key,

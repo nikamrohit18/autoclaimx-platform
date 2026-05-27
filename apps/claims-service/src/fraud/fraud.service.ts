@@ -26,7 +26,7 @@ export class FraudService {
     );
 
     let behavioralScore = 0;
-    const flags = [];
+    const flags: Array<{ type: string; description: string; severity: string }> = [];
 
     if (recentClaims >= 3) {
       behavioralScore = Math.min(0.8, recentClaims * 0.2);
@@ -43,6 +43,7 @@ export class FraudService {
         where: { claimId },
         create: {
           id: uuidv4(),
+          tenantId,
           claimId,
           behavioralScore,
           totalScore: behavioralScore * 0.35,

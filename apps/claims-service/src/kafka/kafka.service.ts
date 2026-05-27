@@ -9,8 +9,8 @@ export { KAFKA_TOPICS };
 @Injectable()
 export class KafkaService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(KafkaService.name);
-  private kafka: Kafka;
-  private producer: Producer;
+  private kafka!: Kafka;
+  private producer!: Producer;
   private consumers: Consumer[] = [];
 
   async onModuleInit() {
