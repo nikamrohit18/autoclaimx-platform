@@ -1,9 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
-import axios, { AxiosRequestConfig } from 'axios';
+import { HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common';
+import axios, { AxiosError, AxiosRequestConfig } from 'axios';
 
-// Thin HTTP proxy: forwards authenticated requests to downstream services.
-// Each NestJS service handles its own business logic; the gateway only handles
-// auth, rate limiting, and routing.
 @Injectable()
 export class ProxyService {
   private readonly logger = new Logger(ProxyService.name);
@@ -23,16 +20,29 @@ export class ProxyService {
     const url = `${this.serviceUrls[service]}${path}`;
     this.logger.debug(`→ ${config.method?.toUpperCase()} ${url}`);
 
-    const response = await axios({
-      ...config,
-      url,
-      headers: {
-        ...config.headers,
-        'X-Internal-Tenant-ID': tenantId,
-        'X-Internal-Service-Secret': process.env.INTERNAL_SERVICE_SECRET,
-      },
-    });
-
-    return response.data;
+    try {
+      const response = await axios({
+        ...config,
+        url,
+        headers: {
+          ...config.headers,
+          'X-Internal-Tenant-ID': tenantId,
+          'X-Internal-Service-Secret': process.env.INTERNAL_SERVICE_SECRET,
+        },
+      });
+      return response.data;
+    } catch (err) {
+      const axiosErr = err as AxiosError;
+      if (axiosErr.response) {
+        // Downstream returned an HTTP error — forward its status and body
+        throw new HttpException(axiosErr.response.data ?? 'Downstream error', axiosErr.response.status);
+      }
+      if (axiosErr.code === 'ECONNREFUSED' || axiosErr.code === 'ENOTFOUND') {
+        this.logger.error(`Service "${service}" unreachable at ${url}`);
+        throw new HttpException('Service temporarily unavailable', HttpStatus.SERVICE_UNAVAILABLE);
+      }
+      this.logger.error(`Unexpected proxy error: ${String(err)}`);
+      throw new HttpException('Internal gateway error', HttpStatus.INTERNAL_SERVER_ERROR);
+    }
   }
 }

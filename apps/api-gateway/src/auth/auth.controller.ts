@@ -1,20 +1,14 @@
-import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Post, Req, UseGuards } from '@nestjs/common';
+import { AuthGuard } from '@nestjs/passport';
+import { Request } from 'express';
 import { AuthService } from './auth.service';
 import { OtpService } from './otp.service';
+import { LoginDto, OtpRequestDto, OtpVerifyDto, RefreshDto } from './auth.dto';
 
-class OtpRequestDto {
-  phone!: string;
-}
-
-class OtpVerifyDto {
-  phone!: string;
-  code!: string;
-}
-
-class LoginDto {
-  email!: string;
-  password!: string;
-  tenantSlug!: string;
+interface AuthUser {
+  userId: string;
+  tenantId: string;
+  role: string;
 }
 
 @Controller('auth')
@@ -23,6 +17,12 @@ export class AuthController {
     private readonly authService: AuthService,
     private readonly otpService: OtpService,
   ) {}
+
+  @Post('login')
+  @HttpCode(HttpStatus.OK)
+  login(@Body() dto: LoginDto) {
+    return this.authService.loginWithPassword(dto.email, dto.password, dto.tenantSlug);
+  }
 
   @Post('otp/request')
   @HttpCode(HttpStatus.OK)
@@ -33,21 +33,19 @@ export class AuthController {
 
   @Post('otp/verify')
   @HttpCode(HttpStatus.OK)
-  async verifyOtp(@Body() dto: OtpVerifyDto) {
-    const tokens = await this.authService.verifyOtpAndIssueTokens(dto.phone, dto.code);
-    return tokens;
-  }
-
-  @Post('login')
-  @HttpCode(HttpStatus.OK)
-  async login(@Body() dto: LoginDto) {
-    const tokens = await this.authService.loginWithPassword(dto.email, dto.password, dto.tenantSlug);
-    return tokens;
+  verifyOtp(@Body() dto: OtpVerifyDto) {
+    return this.authService.verifyOtpAndIssueTokens(dto.phone, dto.code);
   }
 
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
-  async refresh(@Body() body: { refreshToken: string }) {
-    return this.authService.refreshTokens(body.refreshToken);
+  refresh(@Body() dto: RefreshDto) {
+    return this.authService.refreshTokens(dto.refreshToken);
+  }
+
+  @Get('me')
+  @UseGuards(AuthGuard('jwt'))
+  me(@Req() req: Request & { user: AuthUser }) {
+    return this.authService.getMe(req.user.userId);
   }
 }

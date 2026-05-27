@@ -55,6 +55,7 @@ export interface Claim {
   damageReport?: DamageReport;
   fraudScore?: FraudScore;
   negotiation?: Negotiation;
+  currency: string;
   assignedAdjusterId?: string;
   createdAt: string;
   updatedAt: string;

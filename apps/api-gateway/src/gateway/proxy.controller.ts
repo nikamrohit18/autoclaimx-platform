@@ -1,17 +1,11 @@
-import {
-  All,
-  Controller,
-  Req,
-  UseGuards,
-  Param,
-} from '@nestjs/common';
+import { All, Controller, Param, Req, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { Request } from 'express';
 import { ProxyService } from './proxy.service';
 
 type ServiceName = 'claims' | 'workshop' | 'admin';
 
-const SERVICE_PREFIXES: Record<string, ServiceName> = {
+const SERVICE_MAP: Record<string, ServiceName> = {
   claims: 'claims',
   workshops: 'workshop',
   tenants: 'admin',
@@ -23,16 +17,21 @@ const SERVICE_PREFIXES: Record<string, ServiceName> = {
 export class ProxyController {
   constructor(private readonly proxyService: ProxyService) {}
 
-  @All(':resource(claims|workshops|tenants|users)/*')
-  async proxy(@Req() req: Request & { user: { tenantId: string } }, @Param('resource') resource: string) {
-    const service = SERVICE_PREFIXES[resource];
-    // Strip the /api/v1 prefix that NestJS added back off, forward the raw path
-    const downstreamPath = req.url;
-
-    return this.proxyService.forward(service, downstreamPath, {
+  // Matches both /claims and /claims/anything/nested
+  @All([
+    ':resource(claims|workshops|tenants|users)',
+    ':resource(claims|workshops|tenants|users)/*',
+  ])
+  proxy(
+    @Req() req: Request & { user: { tenantId: string } },
+    @Param('resource') resource: string,
+  ) {
+    const service = SERVICE_MAP[resource];
+    // req.url is the full path including /api/v1 prefix and query string.
+    // Downstream services use the same prefix, so forward as-is.
+    return this.proxyService.forward(service, req.url, {
       method: req.method,
       data: req.body,
-      params: req.query,
       headers: { 'content-type': req.headers['content-type'] },
     }, req.user.tenantId);
   }
