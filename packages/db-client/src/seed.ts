@@ -320,18 +320,19 @@ async function main() {
   });
 
   // ── Fraud Scores ─────────────────────────────────────────────────────────────
-  for (const { claimId, totalScore, imageScore, behavioralScore, riskLevel, flags } of [
-    { claimId: claim1.id, totalScore: 0.21, imageScore: 0.18, behavioralScore: 0.27, riskLevel: 'LOW', flags: [] },
+  for (const { claimId, totalScore, imageScore, behavioralScore, graphScore, riskLevel, flags } of [
+    { claimId: claim1.id, totalScore: 0.21, imageScore: 0.18, behavioralScore: 0.27, graphScore: 0.15, riskLevel: 'LOW', flags: [] },
     {
-      claimId: claim2.id, totalScore: 0.58, imageScore: 0.61, behavioralScore: 0.52, riskLevel: 'MEDIUM',
+      claimId: claim2.id, totalScore: 0.58, imageScore: 0.61, behavioralScore: 0.52, graphScore: 0.44,
+      riskLevel: 'MEDIUM',
       flags: [{ type: 'VELOCITY', description: 'Multiple claims within 90 days', severity: 'MEDIUM' }],
     },
-    { claimId: claim3.id, totalScore: 0.09, imageScore: 0.07, behavioralScore: 0.13, riskLevel: 'LOW', flags: [] },
+    { claimId: claim3.id, totalScore: 0.09, imageScore: 0.07, behavioralScore: 0.13, graphScore: 0.05, riskLevel: 'LOW', flags: [] },
   ]) {
     await prisma.fraudScore.upsert({
       where: { claimId },
-      update: { totalScore, imageScore, behavioralScore, riskLevel: riskLevel as any, flags },
-      create: { tenantId: tenant.id, claimId, totalScore, imageScore, behavioralScore, riskLevel: riskLevel as any, flags },
+      update: { totalScore, imageScore, behavioralScore, graphScore, riskLevel: riskLevel as any, flags },
+      create: { tenantId: tenant.id, claimId, totalScore, imageScore, behavioralScore, graphScore, riskLevel: riskLevel as any, flags },
     });
   }
 
