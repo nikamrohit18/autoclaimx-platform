@@ -22,7 +22,8 @@ A sibling repo `autoclaimx-mobile` (Expo/React Native) holds the policyholder mo
 | Phase 7 | Admin Service + RBAC — service layer, RBAC guard, admin users panel | ✅ Done |
 | Phase 8 | Production Deployment — Dockerfiles, docker-compose.prod, CI/CD | ✅ Done |
 | Phase 9 | Observability — structured logging, Prometheus metrics, Grafana dashboards, health checks | ✅ Done |
-| Phase 10 | Unit Tests — Jest specs for 4 NestJS services (84 tests), pytest for fraud-ml + negotiation-llm | ✅ Done |
+| Phase 10a | Unit Tests — Jest (56) for 4 NestJS services, pytest (28) for fraud-ml + negotiation-llm | ✅ Done |
+| Phase 10b | E2E / Integration Tests — Supertest API flows, full claim pipeline against real infra | ⏳ Not started |
 
 ---
 
@@ -101,21 +102,23 @@ pnpm --filter @autoclaimx/claims-service test       # Test one service
 pnpm --filter @autoclaimx/claims-service test -- --testPathPattern="claims.service"  # Single test file
 ```
 
-### Testing (Phase 10)
+### Testing (Phase 10a — unit tests only; Phase 10b E2E not yet started)
 ```sh
 # NestJS unit tests (Jest + ts-jest) — 56 tests across 4 services
-pnpm test                                   # all services via Turborepo
+# admin-service: 7  |  api-gateway: 15  |  claims-service: 25  |  workshop-service: 9
+pnpm test                                   # all 4 services via Turborepo
 pnpm --filter @autoclaimx/admin-service test
 pnpm --filter @autoclaimx/api-gateway test
 pnpm --filter @autoclaimx/claims-service test
 pnpm --filter @autoclaimx/workshop-service test
 
-# Python unit tests (pytest) — 28 tests, no real API calls needed
-python -m pytest ai-services/fraud-ml/tests/
-python -m pytest ai-services/negotiation-llm/tests/
+# Python unit tests (pytest) — 28 tests, no real API calls or external services needed
+# fraud-ml: 18  |  negotiation-llm: 10
+python -m pytest ai-services/fraud-ml/tests/ -v
+python -m pytest ai-services/negotiation-llm/tests/ -v
 
-# Test config per service: jest.config.js + tsconfig.spec.json
-# Shared packages are mocked — no DB/Kafka/Redis needed to run unit tests
+# No DB/Kafka/Redis/S3 needed — all external dependencies are mocked
+# Test artifacts per NestJS service: jest.config.js + tsconfig.spec.json
 ```
 
 ### Python AI services
@@ -323,3 +326,20 @@ AWS credentials are only needed if testing actual S3 uploads; the services will 
 - **New Python AI service:** add `_setup_logging('service-name')` at module top (copy pattern from `ai-services/damage-detection/app/main.py`), wire `Instrumentator().instrument(app).expose(app)` after `FastAPI()`, and add `/health/live` + `/health/ready` endpoints.
 - **New business metric:** define it in the service's `metrics/metrics.module.ts` using `makeCounterProvider` or `makeHistogramProvider`, add it to both `providers` and `exports` arrays, then inject with `@InjectMetric(METRIC_NAME)` in the target service.
 - **Correlation ID in Kafka:** pass `correlationId` as the 4th arg to `kafka.publish()` when it is available from the HTTP request context.
+
+### Unit Test Conventions (Phase 10a)
+
+**NestJS (Jest + ts-jest):**
+- Config file is `jest.config.js` (CommonJS `.js`, not `.ts`) — no `ts-node` dependency needed. `tsconfig.spec.json` extends the service `tsconfig.json` and includes `src/**/*.ts`.
+- Transform pattern is `'^.+\\.ts$'` (TypeScript only). Do **not** use `'(t|j)s'` — it causes ts-jest to try to compile built `.js` dist files from workspace packages.
+- Services are instantiated directly with `new Service(mockDep)`, not via `NestJS TestingModule` — avoids DI boilerplate for pure service logic.
+- `jest.mock()` is hoisted above all code. Two safe patterns for mocking workspace packages:
+  - **`withTenant` pattern** (admin/claims/workshop): define `mockTx` at module level, reference it **inside the callback body** (lazy — runs at test time, not at hoist time). OK to write `jest.mock('@autoclaimx/db-client', () => ({ withTenant: jest.fn((_, fn) => fn(mockTx)) }))`.
+  - **`prisma` pattern** (api-gateway): define the mock structure **inline inside the factory**, then get a reference with `require('@autoclaimx/db-client').prisma` after the `jest.mock()` call. Never reference a `const` variable from the outer scope directly in the factory return value.
+- Use `toBeCloseTo(n, precision)` for any computed float (fraud scores, weighted sums). Never use `toBe()` for floats.
+
+**Python (pytest):**
+- Tests live in `ai-services/<service>/tests/`. Each `tests/` dir has an `__init__.py`.
+- The Anthropic client is mocked by patching `app.agents.negotiation_agent.anthropic.Anthropic`. Always pair this with `patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"})` inside the same `with` block — the constructor reads the env var before the client mock intercepts it.
+- Patch the **module-local name** (`app.detectors.image_forgery.ela_score`), not the global import path, when patching functions within a module under test.
+- No `requirements.txt` install needed to run tests locally if numpy/Pillow are already in the environment; pytest and anthropic are the only test-specific dependencies.
