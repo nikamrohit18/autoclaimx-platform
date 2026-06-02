@@ -216,7 +216,10 @@ export class NegotiationService {
     return withTenant(tenantId, (tx) =>
       tx.negotiationSession.findMany({
         where: { workshopId, tenantId },
-        include: { offers: { orderBy: { createdAt: 'asc' } } },
+        include: {
+          offers: { orderBy: { createdAt: 'asc' } },
+          claim: { select: { claimNumber: true, vehicleMake: true, vehicleModel: true, vehicleYear: true, vehiclePlate: true } },
+        },
         orderBy: { createdAt: 'desc' },
       }),
     );

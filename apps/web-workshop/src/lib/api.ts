@@ -62,6 +62,13 @@ export interface NegotiationOffer {
 export interface NegotiationSession {
   id: string;
   claimId: string;
+  claim?: {
+    claimNumber: string;
+    vehicleMake: string;
+    vehicleModel: string;
+    vehicleYear: number;
+    vehiclePlate: string;
+  };
   status: string;
   currentRound: number;
   maxRounds: number;

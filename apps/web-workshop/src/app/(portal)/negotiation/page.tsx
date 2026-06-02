@@ -95,8 +95,15 @@ export default function NegotiationPage() {
             >
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="font-medium text-gray-900 text-sm">Claim {s.claimId.slice(0, 8)}…</div>
-                  <div className="text-xs text-gray-500 mt-0.5">Round {s.currentRound}/{s.maxRounds}</div>
+                  <div className="font-medium text-gray-900 text-sm">
+                    {s.claim?.claimNumber ?? s.claimId.slice(0, 8) + '…'}
+                  </div>
+                  <div className="text-xs text-gray-500 mt-0.5">
+                    {s.claim
+                      ? `${s.claim.vehicleMake} ${s.claim.vehicleModel} (${s.claim.vehicleYear}) · ${s.claim.vehiclePlate}`
+                      : `Round ${s.currentRound}/${s.maxRounds}`}
+                  </div>
+                  <div className="text-xs text-gray-400 mt-0.5">Round {s.currentRound}/{s.maxRounds}</div>
                 </div>
                 <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
                   s.status === 'AGREED' ? 'bg-green-100 text-green-700' :
@@ -119,7 +126,14 @@ export default function NegotiationPage() {
               <button onClick={() => setSelected(null)} className="text-xs text-blue-600 hover:underline mb-1">
                 ← All negotiations
               </button>
-              <h2 className="font-semibold text-gray-900">Claim {selected.claimId.slice(0, 8)}…</h2>
+              <h2 className="font-semibold text-gray-900">
+                {selected.claim?.claimNumber ?? selected.claimId.slice(0, 8) + '…'}
+              </h2>
+              {selected.claim && (
+                <p className="text-xs text-gray-500 mt-0.5">
+                  {selected.claim.vehicleMake} {selected.claim.vehicleModel} ({selected.claim.vehicleYear}) · {selected.claim.vehiclePlate}
+                </p>
+              )}
             </div>
             <span className="text-sm text-gray-500">Round {selected.currentRound}/{selected.maxRounds}</span>
           </div>
