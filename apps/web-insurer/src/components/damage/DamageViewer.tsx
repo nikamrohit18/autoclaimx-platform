@@ -66,7 +66,7 @@ export function DamageViewer({ damageReport }: DamageViewerProps) {
               {damages.map((d: DetectedDamage, i) => (
                 <tr key={i}>
                   <td className="py-2 pr-4 font-medium text-gray-900">{d.partLabel}</td>
-                  <td className="py-2 pr-4 text-gray-600">{d.damageClass.replace(/_/g, ' ')}</td>
+                  <td className="py-2 pr-4 text-gray-600">{d.damageClass?.replace(/_/g, ' ') ?? ''}</td>
                   <td className="py-2 pr-4">
                     <span className={`px-2 py-0.5 rounded text-xs font-medium ${SEVERITY_COLORS[d.severity]}`}>
                       {d.severity}
