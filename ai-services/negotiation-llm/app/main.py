@@ -64,6 +64,7 @@ def readiness():
 
 class GenerateOfferRequest(BaseModel):
     claim_id: str
+    claim_number: str = ""
     workshop_name: str
     current_round: int
     max_rounds: int = 3
@@ -80,6 +81,7 @@ async def generate_offer(req: GenerateOfferRequest) -> NegotiationOfferOutput:
     try:
         offer = agent.generate_offer(
             claim_id=req.claim_id,
+            claim_number=req.claim_number or req.claim_id,
             workshop_name=req.workshop_name,
             current_round=req.current_round,
             max_rounds=req.max_rounds,

@@ -94,6 +94,7 @@ class NegotiationAgent:
     def generate_offer(
         self,
         claim_id: str,
+        claim_number: str,
         workshop_name: str,
         current_round: int,
         max_rounds: int,
@@ -117,6 +118,7 @@ class NegotiationAgent:
 
         user_content = NEGOTIATION_TURN_PROMPT.format(
             claim_id=claim_id,
+            claim_number=claim_number,
             workshop_name=workshop_name,
             current_round=current_round,
             max_rounds=max_rounds,

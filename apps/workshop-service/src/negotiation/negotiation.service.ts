@@ -57,6 +57,7 @@ export class NegotiationService {
           workshop: true,
           workshopEstimate: true,
           offers: { orderBy: { createdAt: 'asc' } },
+          claim: { select: { claimNumber: true } },
         },
       }),
     );
@@ -83,6 +84,7 @@ export class NegotiationService {
     const inferenceStart = Date.now();
     const { data: offer } = await axios.post(`${llmUrl}/generate-offer`, {
       claim_id: session.claimId,
+      claim_number: session.claim?.claimNumber ?? session.claimId,
       workshop_name: session.workshop.name,
       current_round: round,
       max_rounds: session.maxRounds,
