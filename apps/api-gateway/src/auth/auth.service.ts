@@ -61,7 +61,7 @@ export class AuthService {
       throw new UnauthorizedException('Invalid refresh token');
     }
     if (payload.type !== 'refresh') throw new UnauthorizedException('Not a refresh token');
-    return this.issueTokens({ ...payload, type: 'access' });
+    return this.issueTokens({ sub: payload.sub, tenantId: payload.tenantId, role: payload.role, type: 'access' });
   }
 
   async getMe(userId: string) {
