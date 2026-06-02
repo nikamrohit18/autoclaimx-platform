@@ -1,7 +1,32 @@
+import { randomUUID } from 'crypto';
 import { Module } from '@nestjs/common';
+import { LoggerModule } from 'nestjs-pino';
+import { PrometheusModule } from '@willsoto/nestjs-prometheus';
 import { TenantsModule } from './tenants/tenants.module';
 import { UsersModule } from './users/users.module';
 import { HealthModule } from './health/health.module';
 
-@Module({ imports: [TenantsModule, UsersModule, HealthModule] })
+@Module({
+  imports: [
+    PrometheusModule.register({ path: '/metrics', defaultMetrics: { enabled: true } }),
+    LoggerModule.forRoot({
+      pinoHttp: {
+        level: process.env.LOG_LEVEL ?? 'info',
+        transport:
+          process.env.NODE_ENV !== 'production'
+            ? { target: 'pino-pretty', options: { colorize: true, singleLine: true } }
+            : undefined,
+        base: { service: 'admin-service', env: process.env.NODE_ENV ?? 'development' },
+        genReqId: (req) => (req.headers['x-correlation-id'] as string) ?? randomUUID(),
+        redact: {
+          paths: ['req.headers["x-internal-service-secret"]'],
+          remove: true,
+        },
+      },
+    }),
+    TenantsModule,
+    UsersModule,
+    HealthModule,
+  ],
+})
 export class AppModule {}

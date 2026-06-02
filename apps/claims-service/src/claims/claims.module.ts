@@ -3,9 +3,10 @@ import { ClaimsController } from './claims.controller';
 import { ClaimsService } from './claims.service';
 import { MediaService } from './media.service';
 import { EventsModule } from '../events/events.module';
+import { MetricsModule } from '../metrics/metrics.module';
 
 @Module({
-  imports: [EventsModule],
+  imports: [EventsModule, MetricsModule],
   controllers: [ClaimsController],
   providers: [ClaimsService, MediaService],
   exports: [ClaimsService],

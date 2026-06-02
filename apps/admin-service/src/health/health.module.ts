@@ -1,10 +1,11 @@
 import { Module } from '@nestjs/common';
-import { Controller, Get } from '@nestjs/common';
+import { TerminusModule } from '@nestjs/terminus';
+import { HealthController } from './health.controller';
+import { PrismaHealthIndicator } from './prisma.health';
 
-@Controller('health')
-class HealthController {
-  @Get() check() { return { status: 'ok', service: 'admin-service', timestamp: new Date().toISOString() }; }
-}
-
-@Module({ controllers: [HealthController] })
+@Module({
+  imports: [TerminusModule],
+  controllers: [HealthController],
+  providers: [PrismaHealthIndicator],
+})
 export class HealthModule {}

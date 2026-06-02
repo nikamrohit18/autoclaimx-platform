@@ -1,5 +1,6 @@
 import { HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common';
 import axios, { AxiosError, AxiosRequestConfig } from 'axios';
+import { CORRELATION_ID_HEADER } from '../common/correlation-id.middleware';
 
 @Injectable()
 export class ProxyService {
@@ -16,6 +17,7 @@ export class ProxyService {
     path: string,
     config: AxiosRequestConfig,
     tenantId: string,
+    correlationId?: string,
   ) {
     const url = `${this.serviceUrls[service]}${path}`;
     this.logger.debug(`→ ${config.method?.toUpperCase()} ${url}`);
@@ -28,6 +30,7 @@ export class ProxyService {
           ...config.headers,
           'X-Internal-Tenant-ID': tenantId,
           'X-Internal-Service-Secret': process.env.INTERNAL_SERVICE_SECRET,
+          ...(correlationId ? { [CORRELATION_ID_HEADER]: correlationId } : {}),
         },
       });
       return response.data;

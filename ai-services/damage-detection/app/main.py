@@ -8,6 +8,31 @@ import io
 import logging
 import os
 from contextlib import asynccontextmanager
+from pythonjsonlogger import jsonlogger
+
+
+def _setup_logging(service_name: str) -> None:
+    handler = logging.StreamHandler()
+    handler.setFormatter(
+        jsonlogger.JsonFormatter(
+            fmt='%(asctime)s %(name)s %(levelname)s %(message)s',
+            rename_fields={'asctime': 'timestamp', 'levelname': 'level', 'name': 'logger'},
+        )
+    )
+
+    class _Ctx(logging.Filter):
+        def filter(self, record: logging.LogRecord) -> bool:
+            record.service = service_name  # type: ignore[attr-defined]
+            record.env = os.getenv('ENVIRONMENT', 'development')  # type: ignore[attr-defined]
+            return True
+
+    handler.addFilter(_Ctx())
+    logging.root.handlers = []
+    logging.root.addHandler(handler)
+    logging.root.setLevel(os.getenv('LOG_LEVEL', 'INFO'))
+
+
+_setup_logging('damage-detection')
 
 import boto3
 from fastapi import FastAPI, HTTPException
@@ -25,8 +50,8 @@ from app.schemas import (
     Severity,
 )
 from app import kafka_worker
+from prometheus_fastapi_instrumentator import Instrumentator
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 detector = DamageDetector()
@@ -53,11 +78,24 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+Instrumentator().instrument(app).expose(app)
 
 
 @app.get("/health")
 def health():
     return {"status": "ok", "service": "damage-detection", "model_version": detector.MODEL_VERSION}
+
+
+@app.get("/health/live")
+def liveness():
+    return {"status": "ok"}
+
+
+@app.get("/health/ready")
+def readiness():
+    if detector._model is None:
+        raise HTTPException(status_code=503, detail="Model not loaded")
+    return {"status": "ok", "checks": {"model": "ready"}}
 
 
 @app.post("/analyze", response_model=AnalyzeImageResponse)

@@ -1,0 +1,54 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    environment: 'production'
+    project: 'autoclaimx'
+
+scrape_configs:
+  # ── NestJS Services ──────────────────────────────────────────────────────────
+  - job_name: 'api-gateway'
+    static_configs:
+      - targets: ['api-gateway:3000']
+    metrics_path: /metrics
+
+  - job_name: 'claims-service'
+    static_configs:
+      - targets: ['claims-service:3001']
+    metrics_path: /metrics
+
+  - job_name: 'workshop-service'
+    static_configs:
+      - targets: ['workshop-service:3002']
+    metrics_path: /metrics
+
+  - job_name: 'admin-service'
+    static_configs:
+      - targets: ['admin-service:3003']
+    metrics_path: /metrics
+
+  # ── Python AI Services ───────────────────────────────────────────────────────
+  - job_name: 'damage-detection'
+    static_configs:
+      - targets: ['damage-detection:8001']
+    metrics_path: /metrics
+
+  - job_name: 'negotiation-llm'
+    static_configs:
+      - targets: ['negotiation-llm:8002']
+    metrics_path: /metrics
+
+  - job_name: 'fraud-ml'
+    static_configs:
+      - targets: ['fraud-ml:8003']
+    metrics_path: /metrics
+
+  - job_name: 'ocr-extraction'
+    static_configs:
+      - targets: ['ocr-extraction:8004']
+    metrics_path: /metrics
+
+  # ── Prometheus self-monitoring ───────────────────────────────────────────────
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']

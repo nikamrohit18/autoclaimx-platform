@@ -344,6 +344,7 @@ export interface KafkaEvent<T = unknown> {
   eventType: string;
   tenantId: string;
   timestamp: string;
+  correlationId?: string;
   payload: T;
 }
 

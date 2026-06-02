@@ -26,18 +26,19 @@ export class KafkaService implements OnModuleInit, OnModuleDestroy {
     await this.producer.disconnect();
   }
 
-  async publish<T>(topic: KafkaTopic, payload: T, tenantId: string): Promise<void> {
+  async publish<T>(topic: KafkaTopic, payload: T, tenantId: string, correlationId?: string): Promise<void> {
     const event: KafkaEvent<T> = {
       eventId: uuidv4(),
       eventType: topic,
       tenantId,
       timestamp: new Date().toISOString(),
+      ...(correlationId ? { correlationId } : {}),
       payload,
     };
     await this.producer.send({
       topic,
       messages: [{ key: tenantId, value: JSON.stringify(event) }],
     });
-    this.logger.debug(`Published ${topic}`);
+    this.logger.debug(`Published ${topic}${correlationId ? ` [${correlationId}]` : ''}`);
   }
 }

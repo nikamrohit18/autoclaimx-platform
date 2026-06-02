@@ -9,6 +9,31 @@ import logging
 import os
 from contextlib import asynccontextmanager
 from typing import Optional
+from pythonjsonlogger import jsonlogger
+
+
+def _setup_logging(service_name: str) -> None:
+    handler = logging.StreamHandler()
+    handler.setFormatter(
+        jsonlogger.JsonFormatter(
+            fmt='%(asctime)s %(name)s %(levelname)s %(message)s',
+            rename_fields={'asctime': 'timestamp', 'levelname': 'level', 'name': 'logger'},
+        )
+    )
+
+    class _Ctx(logging.Filter):
+        def filter(self, record: logging.LogRecord) -> bool:
+            record.service = service_name  # type: ignore[attr-defined]
+            record.env = os.getenv('ENVIRONMENT', 'development')  # type: ignore[attr-defined]
+            return True
+
+    handler.addFilter(_Ctx())
+    logging.root.handlers = []
+    logging.root.addHandler(handler)
+    logging.root.setLevel(os.getenv('LOG_LEVEL', 'INFO'))
+
+
+_setup_logging('fraud-ml')
 
 import boto3
 from fastapi import FastAPI, HTTPException
@@ -17,8 +42,8 @@ from pydantic import BaseModel
 
 from app.detectors.image_forgery import score_image_fraud
 from app import kafka_worker
+from prometheus_fastapi_instrumentator import Instrumentator
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 s3 = boto3.client("s3", region_name=os.getenv("AWS_REGION", "ap-southeast-1"))
@@ -33,11 +58,22 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="AutoClaimX Fraud ML", version="0.1.0", lifespan=lifespan)
+Instrumentator().instrument(app).expose(app)
 
 
 @app.get("/health")
 def health():
     return {"status": "ok", "service": "fraud-ml"}
+
+
+@app.get("/health/live")
+def liveness():
+    return {"status": "ok"}
+
+
+@app.get("/health/ready")
+def readiness():
+    return {"status": "ok", "checks": {"process": "ready"}}
 
 
 class ImageFraudRequest(BaseModel):

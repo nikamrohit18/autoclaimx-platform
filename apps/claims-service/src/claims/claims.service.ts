@@ -1,10 +1,16 @@
 import { Injectable, NotFoundException, Logger } from '@nestjs/common';
+import { InjectMetric } from '@willsoto/nestjs-prometheus';
+import { Counter } from 'prom-client';
 import { prisma, withTenant, ClaimStatus } from '@autoclaimx/db-client';
 import { KafkaService, KAFKA_TOPICS } from '../kafka/kafka.service';
 import { ClaimsGateway } from '../events/claims.gateway';
 import { ClaimCreatedPayload, DamageAnalyzedPayload } from '@autoclaimx/shared-types';
 import { CreateClaimDto } from './dto/create-claim.dto';
 import { v4 as uuidv4 } from 'uuid';
+import {
+  METRIC_CLAIMS_CREATED,
+  METRIC_CLAIM_STATUS_TRANSITIONS,
+} from '../metrics/metrics.module';
 
 @Injectable()
 export class ClaimsService {
@@ -13,6 +19,8 @@ export class ClaimsService {
   constructor(
     private readonly kafka: KafkaService,
     private readonly gateway: ClaimsGateway,
+    @InjectMetric(METRIC_CLAIMS_CREATED) private readonly claimsCreatedCounter: Counter<string>,
+    @InjectMetric(METRIC_CLAIM_STATUS_TRANSITIONS) private readonly statusTransitionCounter: Counter<string>,
   ) {}
 
   async create(tenantId: string, dto: CreateClaimDto) {
@@ -49,6 +57,7 @@ export class ClaimsService {
     };
 
     await this.kafka.publish(KAFKA_TOPICS.CLAIM_CREATED, payload, tenantId);
+    this.claimsCreatedCounter.inc({ tenant_id: tenantId });
     this.logger.log(`Created claim ${claim.claimNumber} for tenant ${tenantId}`);
 
     return claim;
@@ -88,13 +97,15 @@ export class ClaimsService {
     return claim;
   }
 
-  async updateStatus(tenantId: string, id: string, status: ClaimStatus) {
+  async updateStatus(tenantId: string, id: string, status: ClaimStatus, fromStatus?: string) {
     const claim = await withTenant(tenantId, (tx) =>
       tx.claim.update({
         where: { id },
         data: { status, ...(status === 'SETTLED' || status === 'CLOSED' ? { closedAt: new Date() } : {}) },
       }),
     );
+
+    this.statusTransitionCounter.inc({ from_status: fromStatus ?? 'unknown', to_status: status });
 
     await this.kafka.publish(
       KAFKA_TOPICS.AUDIT_EVENT,

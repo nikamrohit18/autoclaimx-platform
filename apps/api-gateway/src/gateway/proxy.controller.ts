@@ -3,6 +3,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { Request } from 'express';
 import { ProxyService } from './proxy.service';
 import { ResourceRolesGuard } from '../auth/roles.guard';
+import { CORRELATION_ID_HEADER } from '../common/correlation-id.middleware';
 
 type ServiceName = 'claims' | 'workshop' | 'admin';
 
@@ -30,10 +31,12 @@ export class ProxyController {
     const service = SERVICE_MAP[resource];
     // req.url is the full path including /api/v1 prefix and query string.
     // Downstream services use the same prefix, so forward as-is.
-    return this.proxyService.forward(service, req.url, {
-      method: req.method,
-      data: req.body,
-      headers: { 'content-type': req.headers['content-type'] },
-    }, req.user.tenantId);
+    return this.proxyService.forward(
+      service,
+      req.url,
+      { method: req.method, data: req.body, headers: { 'content-type': req.headers['content-type'] } },
+      req.user.tenantId,
+      req.headers[CORRELATION_ID_HEADER] as string | undefined,
+    );
   }
 }

@@ -1,15 +1,27 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { InjectMetric } from '@willsoto/nestjs-prometheus';
+import { Counter, Histogram } from 'prom-client';
 import { withTenant } from '@autoclaimx/db-client';
 import { NegotiationOfferMadePayload } from '@autoclaimx/shared-types';
 import { KafkaService, KAFKA_TOPICS } from '../kafka/kafka.service';
 import axios from 'axios';
 import { v4 as uuidv4 } from 'uuid';
+import {
+  METRIC_NEGOTIATION_ROUNDS,
+  METRIC_NEGOTIATION_OUTCOMES,
+  METRIC_AI_INFERENCE_DURATION,
+} from '../metrics/metrics.module';
 
 @Injectable()
 export class NegotiationService {
   private readonly logger = new Logger(NegotiationService.name);
 
-  constructor(private readonly kafka: KafkaService) {}
+  constructor(
+    private readonly kafka: KafkaService,
+    @InjectMetric(METRIC_NEGOTIATION_ROUNDS) private readonly roundsCounter: Counter<string>,
+    @InjectMetric(METRIC_NEGOTIATION_OUTCOMES) private readonly outcomesCounter: Counter<string>,
+    @InjectMetric(METRIC_AI_INFERENCE_DURATION) private readonly aiDurationHistogram: Histogram<string>,
+  ) {}
 
   async startSession(tenantId: string, claimId: string, workshopId: string, workshopEstimateId: string) {
     const claim = await withTenant(tenantId, (tx) => tx.claim.findUnique({ where: { id: claimId } }));
@@ -68,6 +80,7 @@ export class NegotiationService {
 
     const llmUrl = process.env.NEGOTIATION_LLM_URL ?? 'http://localhost:8002';
 
+    const inferenceStart = Date.now();
     const { data: offer } = await axios.post(`${llmUrl}/generate-offer`, {
       claim_id: session.claimId,
       workshop_name: session.workshop.name,
@@ -112,6 +125,9 @@ export class NegotiationService {
       }),
     );
 
+    this.aiDurationHistogram.observe({ service: 'negotiation-llm' }, (Date.now() - inferenceStart) / 1000);
+    this.roundsCounter.inc({ offerer: 'AI', style: session.style });
+
     const nextStatus = offer.should_accept ? 'AGREED' : offer.should_escalate ? 'ESCALATED' : 'OFFER_SENT';
 
     await withTenant(tenantId, (tx) =>
@@ -127,6 +143,10 @@ export class NegotiationService {
         },
       }),
     );
+
+    if (nextStatus === 'AGREED' || nextStatus === 'ESCALATED') {
+      this.outcomesCounter.inc({ outcome: nextStatus });
+    }
 
     const kafkaPayload: NegotiationOfferMadePayload = {
       claimId: session.claimId,
