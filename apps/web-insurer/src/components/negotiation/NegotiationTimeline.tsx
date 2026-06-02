@@ -1,8 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { negotiationsApi } from '@/lib/api';
 import type { Negotiation, NegotiationOffer } from '@autoclaimx/shared-types';
+
+type Toast = { message: string; type: 'info' | 'success' | 'error' };
 
 interface NegotiationTimelineProps {
   negotiation: Negotiation;
@@ -13,12 +15,23 @@ export function NegotiationTimeline({ negotiation, onRefresh }: NegotiationTimel
   const [counterAmount, setCounterAmount] = useState('');
   const [counterMessage, setCounterMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [toast, setToast] = useState<Toast | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function showToast(message: string, type: Toast['type'], duration = 4000) {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    setToast({ message, type });
+    if (duration > 0) {
+      toastTimer.current = setTimeout(() => setToast(null), duration);
+    }
+  }
 
   const offers: NegotiationOffer[] = negotiation.offers ?? [];
 
   async function handleCounter(e: React.FormEvent) {
     e.preventDefault();
     setSubmitting(true);
+    showToast('Counter submitted — waiting for AI response...', 'info', 0);
     try {
       await negotiationsApi.counter(negotiation.id, {
         amount: Number(counterAmount),
@@ -27,6 +40,9 @@ export function NegotiationTimeline({ negotiation, onRefresh }: NegotiationTimel
       setCounterAmount('');
       setCounterMessage('');
       onRefresh?.();
+      showToast('AI response received.', 'success');
+    } catch {
+      showToast('Submission failed. Please try again.', 'error');
     } finally {
       setSubmitting(false);
     }
@@ -43,6 +59,19 @@ export function NegotiationTimeline({ negotiation, onRefresh }: NegotiationTimel
 
   return (
     <div className="bg-white rounded-lg border p-6 space-y-4">
+      {toast && (
+        <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-lg shadow-lg text-white text-sm font-medium flex items-center gap-2 ${
+          toast.type === 'success' ? 'bg-green-600' : toast.type === 'error' ? 'bg-red-600' : 'bg-gray-800'
+        }`}>
+          {toast.type === 'info' && (
+            <svg className="w-4 h-4 animate-spin shrink-0" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
+            </svg>
+          )}
+          {toast.message}
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold">AI Negotiation</h2>
         <div className="flex items-center gap-3">

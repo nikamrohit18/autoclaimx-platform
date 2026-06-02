@@ -1,7 +1,26 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { workshopsApi, negotiationsApi, NegotiationSession } from '@/lib/api';
+
+type Toast = { message: string; type: 'info' | 'success' | 'error' };
+
+function ToastBanner({ toast }: { toast: Toast }) {
+  const bg =
+    toast.type === 'success' ? 'bg-green-600' :
+    toast.type === 'error'   ? 'bg-red-600'   : 'bg-gray-800';
+  return (
+    <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-lg shadow-lg text-white text-sm font-medium flex items-center gap-2 ${bg}`}>
+      {toast.type === 'info' && (
+        <svg className="w-4 h-4 animate-spin shrink-0" fill="none" viewBox="0 0 24 24">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
+        </svg>
+      )}
+      {toast.message}
+    </div>
+  );
+}
 
 export default function NegotiationPage() {
   const [workshopId, setWorkshopId] = useState<string | null>(null);
@@ -11,6 +30,16 @@ export default function NegotiationPage() {
   const [counterMessage, setCounterMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [toast, setToast] = useState<Toast | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function showToast(message: string, type: Toast['type'], duration = 4000) {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    setToast({ message, type });
+    if (duration > 0) {
+      toastTimer.current = setTimeout(() => setToast(null), duration);
+    }
+  }
 
   const loadSessions = useCallback(async (wId: string) => {
     const data = await negotiationsApi.getByWorkshop(wId);
@@ -35,6 +64,7 @@ export default function NegotiationPage() {
     e.preventDefault();
     if (!selected || !workshopId) return;
     setSubmitting(true);
+    showToast('Counter-offer submitted — waiting for AI response...', 'info', 0);
     try {
       await negotiationsApi.counter(selected.id, {
         amount: Number(counterAmount),
@@ -43,6 +73,9 @@ export default function NegotiationPage() {
       setCounterAmount('');
       setCounterMessage('');
       await loadSessions(workshopId);
+      showToast('AI response received.', 'success');
+    } catch {
+      showToast('Submission failed. Please try again.', 'error');
     } finally {
       setSubmitting(false);
     }
@@ -51,6 +84,7 @@ export default function NegotiationPage() {
   async function handleAccept() {
     if (!selected || !workshopId) return;
     setSubmitting(true);
+    showToast('Accepting AI offer — please wait...', 'info', 0);
     try {
       const latestAiOffer = [...selected.offers].reverse().find((o) => o.offerer === 'AI');
       if (!latestAiOffer) return;
@@ -59,6 +93,9 @@ export default function NegotiationPage() {
         message: 'Accepted AI offer.',
       });
       await loadSessions(workshopId);
+      showToast('Offer accepted. Settlement confirmed.', 'success');
+    } catch {
+      showToast('Failed to accept offer. Please try again.', 'error');
     } finally {
       setSubmitting(false);
     }
@@ -77,6 +114,7 @@ export default function NegotiationPage() {
 
   return (
     <div className="space-y-6">
+      {toast && <ToastBanner toast={toast} />}
       <h1 className="text-2xl font-semibold text-gray-900">Negotiation Center</h1>
 
       {sessions.length === 0 && (
