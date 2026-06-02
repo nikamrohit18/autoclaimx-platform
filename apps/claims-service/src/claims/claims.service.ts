@@ -72,7 +72,7 @@ export class ClaimsService {
           orderBy: { createdAt: 'desc' },
           skip: (page - 1) * limit,
           take: limit,
-          include: { damageReport: true, fraudScore: true },
+          include: { damageReport: true, fraudScore: true, negotiation: { select: { finalAmount: true, currency: true, status: true } } },
         }),
         tx.claim.count({ where }),
       ]),

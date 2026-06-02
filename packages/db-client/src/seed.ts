@@ -126,7 +126,7 @@ async function main() {
   // Claim 1 — Under Assessment
   const claim1 = await prisma.claim.upsert({
     where: { claimNumber: 'ACX-2024-00001' },
-    update: {},
+    update: { status: ClaimStatus.UNDER_ASSESSMENT, assignedAdjusterId: adjuster.id },
     create: {
       tenantId: tenant.id,
       claimNumber: 'ACX-2024-00001',
@@ -170,7 +170,7 @@ async function main() {
   // Claim 2 — Negotiating
   const claim2 = await prisma.claim.upsert({
     where: { claimNumber: 'ACX-2024-00002' },
-    update: {},
+    update: { status: ClaimStatus.NEGOTIATING, assignedAdjusterId: adjuster.id },
     create: {
       tenantId: tenant.id,
       claimNumber: 'ACX-2024-00002',
@@ -278,7 +278,7 @@ async function main() {
   // Claim 3 — Settled
   const claim3 = await prisma.claim.upsert({
     where: { claimNumber: 'ACX-2024-00003' },
-    update: {},
+    update: { status: ClaimStatus.SETTLED, settlementAmount: 2200, closedAt: new Date('2024-11-18'), assignedAdjusterId: adjuster.id },
     create: {
       tenantId: tenant.id,
       claimNumber: 'ACX-2024-00003',
@@ -318,6 +318,84 @@ async function main() {
     update: dr3Data,
     create: { tenantId: tenant.id, claimId: claim3.id, ...dr3Data },
   });
+
+  // ── Fraud Scores ─────────────────────────────────────────────────────────────
+  for (const { claimId, totalScore, imageScore, behavioralScore, riskLevel, flags } of [
+    { claimId: claim1.id, totalScore: 0.21, imageScore: 0.18, behavioralScore: 0.27, riskLevel: 'LOW', flags: [] },
+    {
+      claimId: claim2.id, totalScore: 0.58, imageScore: 0.61, behavioralScore: 0.52, riskLevel: 'MEDIUM',
+      flags: [{ type: 'VELOCITY', description: 'Multiple claims within 90 days', severity: 'MEDIUM' }],
+    },
+    { claimId: claim3.id, totalScore: 0.09, imageScore: 0.07, behavioralScore: 0.13, riskLevel: 'LOW', flags: [] },
+  ]) {
+    await prisma.fraudScore.upsert({
+      where: { claimId },
+      update: { totalScore, imageScore, behavioralScore, riskLevel: riskLevel as any, flags },
+      create: { tenantId: tenant.id, claimId, totalScore, imageScore, behavioralScore, riskLevel: riskLevel as any, flags },
+    });
+  }
+
+  // ── Settled negotiation for Claim 3 ──────────────────────────────────────────
+  const estimate3 = await prisma.workshopEstimate.upsert({
+    where: { id: 'seed-estimate-003' },
+    update: {},
+    create: {
+      id: 'seed-estimate-003',
+      tenantId: tenant.id,
+      workshopId: workshop.id,
+      claimId: claim3.id,
+      rawFileUrl: 'https://s3.example.com/estimates/acx-2024-00003.pdf',
+      lineItems: [
+        { description: 'Front bumper repair & respray', quantity: 1, unitCost: 1800, totalCost: 1800 },
+        { description: 'Labour (3 hrs)', quantity: 3, unitCost: 120, totalCost: 360 },
+      ],
+      subtotal: 2160,
+      partsTotal: 1800,
+      laborTotal: 360,
+      total: 2160,
+      currency: 'MYR',
+      ocrConfidence: 0.95,
+    },
+  });
+
+  const session3 = await prisma.negotiationSession.upsert({
+    where: { claimId: claim3.id },
+    update: { status: 'AGREED', finalAmount: 2200, resolvedAt: new Date('2024-11-18') },
+    create: {
+      tenantId: tenant.id,
+      claimId: claim3.id,
+      workshopId: workshop.id,
+      workshopEstimateId: estimate3.id,
+      status: 'AGREED',
+      currentRound: 1,
+      maxRounds: 3,
+      style: NegotiationStyle.BALANCED,
+      finalAmount: 2200,
+      currency: 'MYR',
+      resolvedAt: new Date('2024-11-18'),
+    },
+  });
+
+  const existingOffer3 = await prisma.negotiationOffer.findFirst({ where: { sessionId: session3.id, round: 1, offerer: 'AI' } });
+  if (!existingOffer3) {
+    await prisma.negotiationOffer.create({
+      data: {
+        sessionId: session3.id,
+        round: 1,
+        offerer: 'AI',
+        amount: 2200,
+        currency: 'MYR',
+        breakdown: [
+          { description: 'Front bumper repair & respray', approved: 1850, workshopAsked: 1800, delta: 50 },
+          { description: 'Labour', approved: 350, workshopAsked: 360, delta: -10 },
+        ],
+        message: 'Minor damage with high confidence. Offer aligns with workshop estimate; approved at market rate.',
+        confidence: 0.93,
+        style: NegotiationStyle.BALANCED,
+        accepted: true,
+      },
+    });
+  }
 
   console.log(`Claims: ${claim1.claimNumber} (${claim1.status}), ${claim2.claimNumber} (${claim2.status}), ${claim3.claimNumber} (${claim3.status})`);
   console.log('\nSeed complete. Demo credentials (password: Demo@1234):');
