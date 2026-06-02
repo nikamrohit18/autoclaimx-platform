@@ -3,14 +3,18 @@ name: CI
 on:
   push:
     branches: [main, develop]
+    tags: ['v*.*.*']
   pull_request:
     branches: [main, develop]
 
 env:
   NODE_VERSION: '20'
   PNPM_VERSION: '9.4.0'
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ghcr.io/${{ github.repository_owner }}/autoclaimx
 
 jobs:
+  # ── Lint & Type Check ────────────────────────────────────────────────────────
   lint-typecheck:
     name: Lint & Type Check
     runs-on: ubuntu-latest
@@ -35,6 +39,7 @@ jobs:
       - name: Type check
         run: pnpm typecheck
 
+  # ── Node.js Tests ─────────────────────────────────────────────────────────────
   test-node:
     name: Node Tests
     runs-on: ubuntu-latest
@@ -49,11 +54,19 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
       redis:
         image: redis:7.2-alpine
         ports:
           - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
 
@@ -69,6 +82,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Build shared packages
+        run: |
+          pnpm --filter @autoclaimx/shared-types build
+          pnpm --filter @autoclaimx/config build
+          pnpm --filter @autoclaimx/db-client build
+
       - name: Generate Prisma client
         run: pnpm db:generate
         env:
@@ -82,12 +101,15 @@ jobs:
           KAFKA_BROKERS: localhost:9092
           JWT_SECRET: test-secret-for-ci-only-32chars-long
           INTERNAL_SERVICE_SECRET: test-internal-secret-16ch
+          ANTHROPIC_API_KEY: test-key
 
+  # ── Python AI Service Tests ───────────────────────────────────────────────────
   test-python:
-    name: Python AI Service Tests
+    name: Python AI Service Tests (${{ matrix.service }})
     runs-on: ubuntu-latest
     needs: lint-typecheck
     strategy:
+      fail-fast: false
       matrix:
         service: [damage-detection, negotiation-llm, fraud-ml, ocr-extraction]
     steps:
@@ -108,23 +130,170 @@ jobs:
           AWS_REGION: us-east-1
           AWS_ACCESS_KEY_ID: test
           AWS_SECRET_ACCESS_KEY: test
+          ANTHROPIC_API_KEY: test-key
 
-  docker-build:
-    name: Docker Build Check
+  # ── Build & Push Docker Images ────────────────────────────────────────────────
+  docker-build-push:
+    name: Docker Build & Push (${{ matrix.service }})
     runs-on: ubuntu-latest
     needs: [test-node, test-python]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push'
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # NestJS services — build context is repo root
+          - service: api-gateway
+            context: .
+            dockerfile: apps/api-gateway/Dockerfile
+          - service: claims-service
+            context: .
+            dockerfile: apps/claims-service/Dockerfile
+          - service: workshop-service
+            context: .
+            dockerfile: apps/workshop-service/Dockerfile
+          - service: admin-service
+            context: .
+            dockerfile: apps/admin-service/Dockerfile
+          # Next.js web apps — build context is repo root
+          - service: web-insurer
+            context: .
+            dockerfile: apps/web-insurer/Dockerfile
+          - service: web-workshop
+            context: .
+            dockerfile: apps/web-workshop/Dockerfile
+          # Python AI services — each has its own context
+          - service: damage-detection
+            context: ai-services/damage-detection
+            dockerfile: ai-services/damage-detection/Dockerfile
+          - service: negotiation-llm
+            context: ai-services/negotiation-llm
+            dockerfile: ai-services/negotiation-llm/Dockerfile
+          - service: fraud-ml
+            context: ai-services/fraud-ml
+            dockerfile: ai-services/fraud-ml/Dockerfile
+          - service: ocr-extraction
+            context: ai-services/ocr-extraction
+            dockerfile: ai-services/ocr-extraction/Dockerfile
+
     steps:
       - uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build API Gateway image
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute image tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_PREFIX }}/${{ matrix.service }}
+          tags: |
+            type=sha,prefix=,format=short
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+
+      - name: Build and push
         uses: docker/build-push-action@v6
         with:
-          context: .
-          file: apps/api-gateway/Dockerfile
-          push: false
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,scope=${{ matrix.service }},mode=max
+
+  # ── Deploy to Production (main branch only) ──────────────────────────────────
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: docker-build-push
+    if: github.ref == 'refs/heads/main'
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute image tag
+        id: tag
+        run: echo "sha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            set -e
+            cd /opt/autoclaimx
+
+            # Pull latest compose file
+            git pull origin main
+
+            # Set image tag for this deploy
+            export IMAGE_TAG=${{ steps.tag.outputs.sha }}
+            export REGISTRY=ghcr.io/${{ github.repository_owner }}/autoclaimx
+
+            echo "IMAGE_TAG=${IMAGE_TAG}" >> .env.prod
+
+            # Pull new images
+            docker compose -f docker-compose.prod.yml pull
+
+            # Run DB migrations
+            docker compose -f docker-compose.prod.yml run --rm db-migrate
+
+            # Rolling restart — infra stays up, services restart with new images
+            docker compose -f docker-compose.prod.yml up -d \
+              api-gateway claims-service workshop-service admin-service \
+              damage-detection negotiation-llm fraud-ml ocr-extraction \
+              web-insurer web-workshop
+
+            # Remove dangling images
+            docker image prune -f
+
+  # ── Deploy to Staging (develop branch) ──────────────────────────────────────
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: docker-build-push
+    if: github.ref == 'refs/heads/develop'
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute image tag
+        id: tag
+        run: echo "sha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.STAGING_DEPLOY_HOST }}
+          username: ${{ secrets.STAGING_DEPLOY_USER }}
+          key: ${{ secrets.STAGING_DEPLOY_SSH_KEY }}
+          script: |
+            set -e
+            cd /opt/autoclaimx-staging
+
+            git pull origin develop
+
+            export IMAGE_TAG=${{ steps.tag.outputs.sha }}
+            export REGISTRY=ghcr.io/${{ github.repository_owner }}/autoclaimx
+
+            echo "IMAGE_TAG=${IMAGE_TAG}" >> .env.prod
+
+            docker compose -f docker-compose.prod.yml pull
+            docker compose -f docker-compose.prod.yml run --rm db-migrate
+            docker compose -f docker-compose.prod.yml up -d
+            docker image prune -f

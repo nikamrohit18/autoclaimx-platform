@@ -1,0 +1,49 @@
+# Dependencies — reinstalled inside Docker
+node_modules
+**/node_modules
+
+# Build outputs — rebuilt inside Docker
+**/dist
+**/.next
+**/build
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Secrets — never in build context
+.env
+.env.prod
+.env.local
+.env.*.local
+
+# Test & coverage artifacts
+**/coverage
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/.pytest_cache
+**/.mypy_cache
+
+# Python virtual envs
+**/.venv
+**/venv
+
+# ML model weights — loaded at runtime from S3
+**/model_weights
+
+# Tooling & editor config
+.eslintrc*
+.prettierrc*
+.editorconfig
+*.md
+!packages/db-client/prisma/migrations/*.md
+
+# CI / infra / docs — not needed at build time
+.github
+infra
+docs
+
+# macOS
+.DS_Store

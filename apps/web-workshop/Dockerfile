@@ -10,7 +10,9 @@ RUN pnpm install --frozen-lockfile
 
 FROM base AS build
 COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/apps/web-workshop/node_modules ./apps/web-workshop/node_modules
 COPY . .
+RUN pnpm --filter @autoclaimx/shared-types build
 RUN pnpm --filter @autoclaimx/web-workshop build
 
 FROM node:20-alpine AS runner

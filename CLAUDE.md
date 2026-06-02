@@ -20,11 +20,30 @@ A sibling repo `autoclaimx-mobile` (Expo/React Native) holds the policyholder mo
 | Phase 5 | Web UIs — web-insurer and web-workshop connected to real APIs | ✅ Done |
 | Phase 6 | Real-time + Analytics — Socket.io live status push, analytics dashboard | ✅ Done |
 | Phase 7 | Admin Service + RBAC — service layer, RBAC guard, admin users panel | ✅ Done |
-| Phase 8 | Production Deployment — Dockerfiles, docker-compose.prod, CI/CD | 🔜 Next |
+| Phase 8 | Production Deployment — Dockerfiles, docker-compose.prod, CI/CD | ✅ Done |
 
 ---
 
 ## Commands
+
+### Production deployment
+```sh
+# One-time setup — copy and fill in all secrets
+cp .env.prod.example .env.prod
+
+# Run DB migrations against the production DB
+pnpm db:migrate:prod
+
+# Pull latest images and start all production services
+pnpm prod:pull
+pnpm prod:up
+
+# Tail production logs
+pnpm prod:logs
+
+# Tear down (keeps volumes)
+pnpm prod:down
+```
 
 ### Infrastructure (required before running any service)
 ```sh
