@@ -59,6 +59,7 @@ def _process(msg, detector: DamageDetector, producer: Producer) -> None:
     s3_key = payload["s3Key"]
     media_asset_id = payload["mediaAssetId"]
     content_type = payload.get("contentType", "image/jpeg")
+    currency = payload.get("currency", "USD")
 
     if not content_type.startswith("image/"):
         return  # skip video / document uploads
@@ -88,7 +89,7 @@ def _process(msg, detector: DamageDetector, producer: Producer) -> None:
         "totalLossProbability": round(tl_prob, 4),
         "estimatedCostMin": cost_min,
         "estimatedCostMax": cost_max,
-        "currency": "USD",
+        "currency": currency,
     })
     logger.info("damage.analyzed published for claim %s (severity=%s)", claim_id, severity)
 

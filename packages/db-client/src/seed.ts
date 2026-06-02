@@ -253,24 +253,29 @@ async function main() {
     },
   });
 
-  await prisma.negotiationOffer.create({
-    data: {
-      sessionId: session2.id,
-      round: 1,
-      offerer: 'AI',
-      amount: 6800,
-      currency: 'MYR',
-      breakdown: [
-        { description: 'Front door panel replacement', approved: 3400, workshopAsked: 3800, delta: -400 },
-        { description: 'Front fender repair & respray', approved: 1900, workshopAsked: 2200, delta: -300 },
-        { description: 'Side mirror assembly', approved: 600, workshopAsked: 650, delta: -50 },
-        { description: 'Labour', approved: 900, workshopAsked: 960, delta: -60 },
-      ],
-      message: 'Based on benchmark rates for this repair type and vehicle age, we offer MYR 6,800. Parts pricing is adjusted to market average; labour rate capped at prevailing workshop tier.',
-      confidence: 0.87,
-      style: NegotiationStyle.BALANCED,
-    },
+  const existingOffer = await prisma.negotiationOffer.findFirst({
+    where: { sessionId: session2.id, round: 1, offerer: 'AI' },
   });
+  if (!existingOffer) {
+    await prisma.negotiationOffer.create({
+      data: {
+        sessionId: session2.id,
+        round: 1,
+        offerer: 'AI',
+        amount: 6800,
+        currency: 'MYR',
+        breakdown: [
+          { description: 'Front door panel replacement', approved: 3400, workshopAsked: 3800, delta: -400 },
+          { description: 'Front fender repair & respray', approved: 1900, workshopAsked: 2200, delta: -300 },
+          { description: 'Side mirror assembly', approved: 600, workshopAsked: 650, delta: -50 },
+          { description: 'Labour', approved: 900, workshopAsked: 960, delta: -60 },
+        ],
+        message: 'Based on benchmark rates for this repair type and vehicle age, we offer MYR 6,800. Parts pricing is adjusted to market average; labour rate capped at prevailing workshop tier.',
+        confidence: 0.87,
+        style: NegotiationStyle.BALANCED,
+      },
+    });
+  }
 
   // Claim 3 — Settled
   const claim3 = await prisma.claim.upsert({

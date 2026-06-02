@@ -360,6 +360,7 @@ export interface MediaUploadedPayload {
   s3Key: string;
   contentType: string;
   sizeBytes: number;
+  currency: string;
 }
 
 export interface DamageAnalyzedPayload {

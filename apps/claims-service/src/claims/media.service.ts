@@ -83,7 +83,10 @@ export class MediaService {
       }),
     );
 
-    const payload: MediaUploadedPayload = { claimId, mediaAssetId, s3Key, contentType, sizeBytes };
+    const claim = await withTenant(tenantId, (tx) =>
+      tx.claim.findUnique({ where: { id: claimId }, select: { currency: true } }),
+    );
+    const payload: MediaUploadedPayload = { claimId, mediaAssetId, s3Key, contentType, sizeBytes, currency: claim?.currency ?? 'USD' };
     await this.kafka.publish(KAFKA_TOPICS.MEDIA_UPLOADED, payload, tenantId);
     this.logger.log(`Media ${mediaAssetId} confirmed for claim ${claimId}`);
 
