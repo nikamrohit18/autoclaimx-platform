@@ -170,7 +170,7 @@ async function main() {
   // Claim 2 — Negotiating
   const claim2 = await prisma.claim.upsert({
     where: { claimNumber: 'ACX-2024-00002' },
-    update: { status: ClaimStatus.NEGOTIATING, assignedAdjusterId: adjuster.id },
+    update: { status: ClaimStatus.NEGOTIATING, assignedAdjusterId: adjuster.id, vehicleVin: 'MHRS2DD2XNH123456' },
     create: {
       tenantId: tenant.id,
       claimNumber: 'ACX-2024-00002',
@@ -181,6 +181,7 @@ async function main() {
       vehicleMake: 'Honda',
       vehicleModel: 'City',
       vehicleYear: 2022,
+      vehicleVin: 'MHRS2DD2XNH123456',
       incidentDate: new Date('2024-11-20'),
       incidentAddress: 'NKVE, Shah Alam',
       incidentDescription: 'Side swipe on highway. Front door and fender damaged.',
@@ -278,7 +279,7 @@ async function main() {
   // Claim 3 — Settled
   const claim3 = await prisma.claim.upsert({
     where: { claimNumber: 'ACX-2024-00003' },
-    update: { status: ClaimStatus.SETTLED, settlementAmount: 2200, closedAt: new Date('2024-11-18'), assignedAdjusterId: adjuster.id },
+    update: { status: ClaimStatus.SETTLED, settlementAmount: 2200, closedAt: new Date('2024-11-18'), assignedAdjusterId: adjuster.id, vehicleVin: 'MMBRRK3C5L0012345' },
     create: {
       tenantId: tenant.id,
       claimNumber: 'ACX-2024-00003',
@@ -289,6 +290,7 @@ async function main() {
       vehicleMake: 'Toyota',
       vehicleModel: 'Vios',
       vehicleYear: 2020,
+      vehicleVin: 'MMBRRK3C5L0012345',
       incidentDate: new Date('2024-11-05'),
       incidentAddress: 'Jalan Ipoh, Kuala Lumpur',
       incidentDescription: 'Parking lot collision. Scratches and minor dent on front bumper.',

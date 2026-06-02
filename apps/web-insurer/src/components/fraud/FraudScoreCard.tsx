@@ -13,6 +13,13 @@ interface FraudScoreCardProps {
   fraudScore: FraudScore;
 }
 
+function scoreBarColor(pct: number): string {
+  if (pct >= 75) return 'bg-red-500';
+  if (pct >= 50) return 'bg-yellow-500';
+  if (pct >= 25) return 'bg-orange-400';
+  return 'bg-green-500';
+}
+
 export function FraudScoreCard({ fraudScore }: FraudScoreCardProps) {
   const style = RISK_STYLES[fraudScore.riskLevel];
   const totalPct = Math.round(Number(fraudScore.totalScore) * 100);
@@ -27,27 +34,21 @@ export function FraudScoreCard({ fraudScore }: FraudScoreCardProps) {
       </div>
 
       {/* Score breakdown */}
-      <div className="space-y-2">
+      <div className="space-y-3">
         {[
-          { label: 'Overall Score', value: totalPct, showBar: true },
-          { label: 'Image Analysis', value: Math.round(Number(fraudScore.imageScore) * 100), showBar: false },
-          { label: 'Behavioral', value: Math.round(Number(fraudScore.behavioralScore) * 100), showBar: false },
-          { label: 'Network Graph', value: Math.round(Number(fraudScore.graphScore) * 100), showBar: false },
-        ].map(({ label, value, showBar }) => (
+          { label: 'Overall Score', value: totalPct },
+          { label: 'Image Analysis', value: Math.round(Number(fraudScore.imageScore) * 100) },
+          { label: 'Behavioral', value: Math.round(Number(fraudScore.behavioralScore) * 100) },
+          { label: 'Network Graph', value: Math.round(Number(fraudScore.graphScore) * 100) },
+        ].map(({ label, value }) => (
           <div key={label} className="flex items-center gap-3">
             <span className="text-sm text-gray-500 w-36 flex-shrink-0">{label}</span>
-            {showBar ? (
-              <div className="flex-1 bg-gray-100 rounded-full h-2">
-                <div
-                  className={`h-2 rounded-full ${style.bar} transition-all`}
-                  style={{ width: `${value}%` }}
-                />
-              </div>
-            ) : (
-              <div className="flex-1 bg-gray-100 rounded-full h-1.5">
-                <div className="h-1.5 rounded-full bg-gray-400" style={{ width: `${value}%` }} />
-              </div>
-            )}
+            <div className="flex-1 bg-gray-100 rounded-full h-2">
+              <div
+                className={`h-2 rounded-full ${scoreBarColor(value)} transition-all`}
+                style={{ width: `${value}%` }}
+              />
+            </div>
             <span className="text-sm font-medium text-gray-700 w-10 text-right">{value}%</span>
           </div>
         ))}
