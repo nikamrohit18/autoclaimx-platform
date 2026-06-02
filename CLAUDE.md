@@ -23,7 +23,7 @@ A sibling repo `autoclaimx-mobile` (Expo/React Native) holds the policyholder mo
 | Phase 8 | Production Deployment — Dockerfiles, docker-compose.prod, CI/CD | ✅ Done |
 | Phase 9 | Observability — structured logging, Prometheus metrics, Grafana dashboards, health checks | ✅ Done |
 | Phase 10a | Unit Tests — Jest (56) for 4 NestJS services, pytest (28) for fraud-ml + negotiation-llm | ✅ Done |
-| Phase 10b | E2E / Integration Tests — Supertest API flows, full claim pipeline against real infra | ⏳ Not started |
+| Phase 10b | E2E / Integration Tests — Supertest API flows for all 4 NestJS services (37 tests) | ✅ Done |
 
 ---
 
@@ -102,7 +102,7 @@ pnpm --filter @autoclaimx/claims-service test       # Test one service
 pnpm --filter @autoclaimx/claims-service test -- --testPathPattern="claims.service"  # Single test file
 ```
 
-### Testing (Phase 10a — unit tests only; Phase 10b E2E not yet started)
+### Testing (Phase 10a unit tests + Phase 10b E2E)
 ```sh
 # NestJS unit tests (Jest + ts-jest) — 56 tests across 4 services
 # admin-service: 7  |  api-gateway: 15  |  claims-service: 25  |  workshop-service: 9
@@ -112,13 +112,21 @@ pnpm --filter @autoclaimx/api-gateway test
 pnpm --filter @autoclaimx/claims-service test
 pnpm --filter @autoclaimx/workshop-service test
 
+# NestJS E2E tests (Supertest) — 37 tests across 4 services
+# admin-service: 9  |  api-gateway: 12  |  claims-service: 9  |  workshop-service: 7
+pnpm --filter @autoclaimx/admin-service test:e2e
+pnpm --filter @autoclaimx/api-gateway test:e2e
+pnpm --filter @autoclaimx/claims-service test:e2e
+pnpm --filter @autoclaimx/workshop-service test:e2e
+
 # Python unit tests (pytest) — 28 tests, no real API calls or external services needed
 # fraud-ml: 18  |  negotiation-llm: 10
 python -m pytest ai-services/fraud-ml/tests/ -v
 python -m pytest ai-services/negotiation-llm/tests/ -v
 
-# No DB/Kafka/Redis/S3 needed — all external dependencies are mocked
-# Test artifacts per NestJS service: jest.config.js + tsconfig.spec.json
+# No DB/Kafka/Redis/S3 needed for any of the above — all external dependencies are mocked
+# Unit test artifacts per NestJS service: jest.config.js + tsconfig.spec.json
+# E2E test artifacts per NestJS service: test/jest-e2e.config.js + test/*.e2e-spec.ts
 ```
 
 ### Python AI services
@@ -343,3 +351,16 @@ AWS credentials are only needed if testing actual S3 uploads; the services will 
 - The Anthropic client is mocked by patching `app.agents.negotiation_agent.anthropic.Anthropic`. Always pair this with `patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"})` inside the same `with` block — the constructor reads the env var before the client mock intercepts it.
 - Patch the **module-local name** (`app.detectors.image_forgery.ela_score`), not the global import path, when patching functions within a module under test.
 - No `requirements.txt` install needed to run tests locally if numpy/Pillow are already in the environment; pytest and anthropic are the only test-specific dependencies.
+
+### E2E Test Conventions (Phase 10b)
+
+**NestJS Supertest E2E:**
+- Config file is `test/jest-e2e.config.js`; test files are `test/*.e2e-spec.ts`. `tsconfig.spec.json` must include `test/**/*.ts` alongside `src/**/*.ts`.
+- Use `import request = require('supertest')` (not `import * as`) — `esModuleInterop` is not set and supertest v7 uses ESM exports; the assignment form avoids TS2349.
+- Use **targeted `TestingModule`** (controller + service providers only, no `AppModule`) — avoids pulling in Kafka `OnModuleInit`, PrometheusModule DI, and WebSocket gateways that require real infra.
+- Mock metric injection with `{ provide: getToken(METRIC_NAME), useValue: { inc: jest.fn() } }` — import `getToken` from `@willsoto/nestjs-prometheus` (not `getMetricToken`, which does not exist in v6).
+- `KafkaService`, `ClaimsGateway`, and any service that connects to external systems must be provided as `useValue` mocks — they implement `OnModuleInit` and will attempt real connections otherwise.
+- `OtpService` creates a `new Redis(...)` in its constructor; override it entirely with `.overrideProvider(OtpService).useValue(mockOtp)` rather than mocking the Redis module.
+- Set `process.env.JWT_SECRET` at the top of the file (before imports resolve) so `JwtModule`/`JwtStrategy` initialise with a known key.
+- **Refresh token pitfall:** `jwtService.verify()` returns the full JWT payload including `iat` and `exp`. Strip those before re-signing — pass only `{ sub, tenantId, role, type }` to `issueTokens()`, otherwise `sign()` throws "payload already has an exp property".
+- When a controller returns `null` (e.g. a not-yet-populated relation), the response has no body and Supertest's `res.body` is `{}`. Assert on status only, not on `res.body`.
