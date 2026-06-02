@@ -94,7 +94,13 @@ export class ClaimsService {
     );
 
     if (!claim) throw new NotFoundException(`Claim ${id} not found`);
-    return claim;
+
+    const holder = await prisma.user.findUnique({
+      where: { id: claim.policyHolderId },
+      select: { name: true, phone: true },
+    });
+
+    return { ...claim, policyHolderName: holder?.name ?? holder?.phone ?? claim.policyHolderId };
   }
 
   async updateStatus(tenantId: string, id: string, status: ClaimStatus, fromStatus?: string) {

@@ -44,6 +44,7 @@ export interface Claim {
   status: ClaimStatus;
   policyNumber: string;
   policyHolderId: string;
+  policyHolderName?: string;
   vehicleVin?: string;
   vehiclePlate: string;
   vehicleMake: string;

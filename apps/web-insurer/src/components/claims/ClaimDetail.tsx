@@ -86,7 +86,7 @@ export function ClaimDetail({ claimId }: ClaimDetailProps) {
         {[
           { label: 'Policy', value: claim.policyNumber },
           { label: 'Incident Date', value: new Date(claim.incidentDate).toLocaleDateString() },
-          { label: 'Policy Holder', value: claim.policyHolderId },
+          { label: 'Policy Holder', value: claim.policyHolderName ?? claim.policyHolderId },
           { label: 'VIN', value: claim.vehicleVin ?? '—' },
         ].map(({ label, value }) => (
           <div key={label} className="bg-white rounded-lg border p-4">

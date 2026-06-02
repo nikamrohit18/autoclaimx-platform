@@ -147,25 +147,24 @@ async function main() {
     },
   });
 
+  const dr1Data = {
+    processingStatus: 'COMPLETE' as const,
+    aiDamages: [
+      { partLabel: 'Rear Bumper', damageClass: 'DENT', severity: 'HIGH', confidence: 0.94, recommendation: 'REPLACE', estimatedCostMin: 1800, estimatedCostMax: 2800, mediaAssetId: 'seed-media-001' },
+      { partLabel: 'Boot Lid', damageClass: 'DENT', severity: 'MEDIUM', confidence: 0.87, recommendation: 'REPAIR', estimatedCostMin: 1400, estimatedCostMax: 3000, mediaAssetId: 'seed-media-001' },
+    ],
+    overallSeverity: 'MEDIUM',
+    totalLossProbability: 0.05,
+    estimatedCostMin: 3200,
+    estimatedCostMax: 5800,
+    currency: 'MYR',
+    modelVersion: 'yolov8-acx-v1.2',
+    processedAt: new Date(),
+  };
   await prisma.damageReport.upsert({
     where: { claimId: claim1.id },
-    update: {},
-    create: {
-      tenantId: tenant.id,
-      claimId: claim1.id,
-      processingStatus: 'COMPLETE',
-      aiDamages: [
-        { partLabel: 'Rear Bumper', damageClass: 'DENT', severity: 'HIGH', confidence: 0.94, recommendation: 'REPLACE', estimatedCostMin: 1800, estimatedCostMax: 2800, mediaAssetId: 'seed-media-001' },
-        { partLabel: 'Boot Lid', damageClass: 'DENT', severity: 'MEDIUM', confidence: 0.87, recommendation: 'REPAIR', estimatedCostMin: 1400, estimatedCostMax: 3000, mediaAssetId: 'seed-media-001' },
-      ],
-      overallSeverity: 'MEDIUM',
-      totalLossProbability: 0.05,
-      estimatedCostMin: 3200,
-      estimatedCostMax: 5800,
-      currency: 'MYR',
-      modelVersion: 'yolov8-acx-v1.2',
-      processedAt: new Date(),
-    },
+    update: dr1Data,
+    create: { tenantId: tenant.id, claimId: claim1.id, ...dr1Data },
   });
 
   // Claim 2 — Negotiating
@@ -191,26 +190,25 @@ async function main() {
     },
   });
 
+  const dr2Data = {
+    processingStatus: 'COMPLETE' as const,
+    aiDamages: [
+      { partLabel: 'Front Door (Left)', damageClass: 'DENT', severity: 'HIGH', confidence: 0.91, recommendation: 'REPLACE', estimatedCostMin: 3200, estimatedCostMax: 4200, mediaAssetId: 'seed-media-002' },
+      { partLabel: 'Front Fender (Left)', damageClass: 'SCRATCH', severity: 'HIGH', confidence: 0.88, recommendation: 'REPAIR', estimatedCostMin: 1800, estimatedCostMax: 2600, mediaAssetId: 'seed-media-002' },
+      { partLabel: 'Side Mirror (Left)', damageClass: 'CRACK', severity: 'MEDIUM', confidence: 0.95, recommendation: 'REPLACE', estimatedCostMin: 500, estimatedCostMax: 800, mediaAssetId: 'seed-media-002' },
+    ],
+    overallSeverity: 'HIGH',
+    totalLossProbability: 0.1,
+    estimatedCostMin: 7500,
+    estimatedCostMax: 11000,
+    currency: 'MYR',
+    modelVersion: 'yolov8-acx-v1.2',
+    processedAt: new Date(),
+  };
   await prisma.damageReport.upsert({
     where: { claimId: claim2.id },
-    update: {},
-    create: {
-      tenantId: tenant.id,
-      claimId: claim2.id,
-      processingStatus: 'COMPLETE',
-      aiDamages: [
-        { partLabel: 'Front Door (Left)', damageClass: 'DENT', severity: 'HIGH', confidence: 0.91, recommendation: 'REPLACE', estimatedCostMin: 3200, estimatedCostMax: 4200, mediaAssetId: 'seed-media-002' },
-        { partLabel: 'Front Fender (Left)', damageClass: 'SCRATCH', severity: 'HIGH', confidence: 0.88, recommendation: 'REPAIR', estimatedCostMin: 1800, estimatedCostMax: 2600, mediaAssetId: 'seed-media-002' },
-        { partLabel: 'Side Mirror (Left)', damageClass: 'CRACK', severity: 'MEDIUM', confidence: 0.95, recommendation: 'REPLACE', estimatedCostMin: 500, estimatedCostMax: 800, mediaAssetId: 'seed-media-002' },
-      ],
-      overallSeverity: 'HIGH',
-      totalLossProbability: 0.1,
-      estimatedCostMin: 7500,
-      estimatedCostMax: 11000,
-      currency: 'MYR',
-      modelVersion: 'yolov8-acx-v1.2',
-      processedAt: new Date(),
-    },
+    update: dr2Data,
+    create: { tenantId: tenant.id, claimId: claim2.id, ...dr2Data },
   });
 
   const estimate2 = await prisma.workshopEstimate.upsert({
@@ -302,24 +300,23 @@ async function main() {
     },
   });
 
+  const dr3Data = {
+    processingStatus: 'COMPLETE' as const,
+    aiDamages: [
+      { partLabel: 'Front Bumper', damageClass: 'SCRATCH', severity: 'LOW', confidence: 0.96, recommendation: 'REPAIR', estimatedCostMin: 800, estimatedCostMax: 2500, mediaAssetId: 'seed-media-003' },
+    ],
+    overallSeverity: 'LOW',
+    totalLossProbability: 0.01,
+    estimatedCostMin: 800,
+    estimatedCostMax: 2500,
+    currency: 'MYR',
+    modelVersion: 'yolov8-acx-v1.2',
+    processedAt: new Date(),
+  };
   await prisma.damageReport.upsert({
     where: { claimId: claim3.id },
-    update: {},
-    create: {
-      tenantId: tenant.id,
-      claimId: claim3.id,
-      processingStatus: 'COMPLETE',
-      aiDamages: [
-        { partLabel: 'Front Bumper', damageClass: 'SCRATCH', severity: 'LOW', confidence: 0.96, recommendation: 'REPAIR', estimatedCostMin: 800, estimatedCostMax: 2500, mediaAssetId: 'seed-media-003' },
-      ],
-      overallSeverity: 'LOW',
-      totalLossProbability: 0.01,
-      estimatedCostMin: 800,
-      estimatedCostMax: 2500,
-      currency: 'MYR',
-      modelVersion: 'yolov8-acx-v1.2',
-      processedAt: new Date(),
-    },
+    update: dr3Data,
+    create: { tenantId: tenant.id, claimId: claim3.id, ...dr3Data },
   });
 
   console.log(`Claims: ${claim1.claimNumber} (${claim1.status}), ${claim2.claimNumber} (${claim2.status}), ${claim3.claimNumber} (${claim3.status})`);
