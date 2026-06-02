@@ -49,6 +49,44 @@ class NegotiationOfferOutput(BaseModel):
     reasoning: str  # Internal reasoning (not shown to workshop)
 
 
+_NEGOTIATION_TOOL = {
+    "name": "submit_negotiation_offer",
+    "description": "Submit the structured negotiation offer after analysing the workshop estimate.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "recommended_total": {"type": "number", "description": "Total counter-offer amount"},
+            "currency": {"type": "string", "description": "Currency code, e.g. THB"},
+            "line_items": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "description": {"type": "string"},
+                        "workshop_amount": {"type": "number"},
+                        "ai_recommended_amount": {"type": "number"},
+                        "benchmark_min": {"type": "number"},
+                        "benchmark_max": {"type": "number"},
+                        "flagged": {"type": "boolean"},
+                        "flag_reason": {"type": ["string", "null"]},
+                        "recommendation": {"type": "string", "enum": ["ACCEPT", "REDUCE", "REPLACE_WITH_REPAIR"]},
+                    },
+                    "required": ["description", "workshop_amount", "ai_recommended_amount",
+                                 "benchmark_min", "benchmark_max", "flagged", "recommendation"],
+                },
+            },
+            "message": {"type": "string", "description": "Professional message to the workshop"},
+            "confidence": {"type": "number", "description": "Confidence 0-1"},
+            "should_accept": {"type": "boolean"},
+            "should_escalate": {"type": "boolean"},
+            "reasoning": {"type": "string", "description": "Internal reasoning"},
+        },
+        "required": ["recommended_total", "currency", "line_items", "message",
+                     "confidence", "should_accept", "should_escalate", "reasoning"],
+    },
+}
+
+
 class NegotiationAgent:
     def __init__(self) -> None:
         self.client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
@@ -97,14 +135,18 @@ class NegotiationAgent:
             max_tokens=MAX_TOKENS,
             system=system,
             messages=messages,
-            # Use extended thinking for complex negotiations (Phase 2 feature)
-            # thinking={"type": "enabled", "budget_tokens": 2000},
+            tools=[_NEGOTIATION_TOOL],
+            tool_choice={"type": "tool", "name": "submit_negotiation_offer"},
         )
 
-        raw_text = response.content[0].text
-        logger.debug(f"LLM response for claim {claim_id} round {current_round}:\n{raw_text}")
+        tool_block = next((b for b in response.content if b.type == "tool_use"), None)
+        if tool_block is None:
+            raise ValueError(f"No tool_use block in response for claim {claim_id}")
 
-        return self._parse_response(raw_text)
+        data = tool_block.input
+        logger.info(f"LLM tool input for claim {claim_id} round {current_round}: recommended_total={data.get('recommended_total')}")
+
+        return NegotiationOfferOutput(**data)
 
     def _format_history(self, history: list[dict[str, str]]) -> str:
         if not history:
@@ -113,17 +155,3 @@ class NegotiationAgent:
         for h in history:
             lines.append(f"Round {h['round']} ({h['offerer']}): {h['amount']} {h['currency']}\n{h['message']}")
         return "\n\n".join(lines)
-
-    def _parse_response(self, text: str) -> NegotiationOfferOutput:
-        # Extract JSON from the response (Claude may wrap it in markdown)
-        import re
-
-        json_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
-        if json_match:
-            json_str = json_match.group(1)
-        else:
-            # Try direct parse
-            json_str = text.strip()
-
-        data = json.loads(json_str)
-        return NegotiationOfferOutput(**data)
