@@ -22,6 +22,7 @@ A sibling repo `autoclaimx-mobile` (Expo/React Native) holds the policyholder mo
 | Phase 7 | Admin Service + RBAC — service layer, RBAC guard, admin users panel | ✅ Done |
 | Phase 8 | Production Deployment — Dockerfiles, docker-compose.prod, CI/CD | ✅ Done |
 | Phase 9 | Observability — structured logging, Prometheus metrics, Grafana dashboards, health checks | ✅ Done |
+| Phase 10 | Unit Tests — Jest specs for 4 NestJS services (84 tests), pytest for fraud-ml + negotiation-llm | ✅ Done |
 
 ---
 
@@ -98,6 +99,23 @@ pnpm --filter @autoclaimx/web-insurer dev           # Run web-insurer on :3010
 pnpm --filter @autoclaimx/web-workshop dev          # Run web-workshop on :3011
 pnpm --filter @autoclaimx/claims-service test       # Test one service
 pnpm --filter @autoclaimx/claims-service test -- --testPathPattern="claims.service"  # Single test file
+```
+
+### Testing (Phase 10)
+```sh
+# NestJS unit tests (Jest + ts-jest) — 56 tests across 4 services
+pnpm test                                   # all services via Turborepo
+pnpm --filter @autoclaimx/admin-service test
+pnpm --filter @autoclaimx/api-gateway test
+pnpm --filter @autoclaimx/claims-service test
+pnpm --filter @autoclaimx/workshop-service test
+
+# Python unit tests (pytest) — 28 tests, no real API calls needed
+python -m pytest ai-services/fraud-ml/tests/
+python -m pytest ai-services/negotiation-llm/tests/
+
+# Test config per service: jest.config.js + tsconfig.spec.json
+# Shared packages are mocked — no DB/Kafka/Redis needed to run unit tests
 ```
 
 ### Python AI services
