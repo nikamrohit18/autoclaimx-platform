@@ -334,6 +334,9 @@ AWS credentials are only needed if testing actual S3 uploads; the services will 
 - **New Python AI service:** add `_setup_logging('service-name')` at module top (copy pattern from `ai-services/damage-detection/app/main.py`), wire `Instrumentator().instrument(app).expose(app)` after `FastAPI()`, and add `/health/live` + `/health/ready` endpoints.
 - **New business metric:** define it in the service's `metrics/metrics.module.ts` using `makeCounterProvider` or `makeHistogramProvider`, add it to both `providers` and `exports` arrays, then inject with `@InjectMetric(METRIC_NAME)` in the target service.
 - **Correlation ID in Kafka:** pass `correlationId` as the 4th arg to `kafka.publish()` when it is available from the HTTP request context.
+- **NestJS Dockerfile build order:** always run `prisma generate` **before** `db-client build`. `packages/db-client/src/index.ts` imports from `@prisma/client` which only exists after generate runs — building first causes `tsc` to exit 2. Use `DATABASE_URL=postgresql://placeholder/placeholder pnpm --filter @autoclaimx/db-client generate` then `pnpm --filter @autoclaimx/db-client build`.
+- **NestJS Dockerfile pattern:** use 2-stage (base → build → runner), never 3-stage (deps → build → runner). Copying `node_modules` across Docker stages breaks pnpm's per-package symlinks to the `.pnpm/` virtual store.
+- **CI test commands:** use `pnpm exec turbo run test -- <flags>` (not `pnpm test -- <flags>`) — the latter forwards flags to turbo without a `--` separator. For per-service E2E tests, invoke the jest binary directly (`cd apps/$service && ./node_modules/.bin/jest ...`) instead of `pnpm --filter $service test:e2e -- <flags>` — pnpm quotes the `--` literally, causing Jest to treat it as a path pattern.
 
 ### Unit Test Conventions (Phase 10a)
 
