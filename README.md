@@ -52,6 +52,7 @@ Policyholder submits claim (FNOL)
 - [AI Pipeline](#ai-pipeline)
 - [Multi-Tenancy](#multi-tenancy)
 - [Kafka Event Flow](#kafka-event-flow)
+- [Testing](#testing)
 - [Demo Data](#demo-data)
 
 ---
@@ -83,7 +84,9 @@ autoclaimx-platform/
 │   ├── api-gateway/          # Auth, rate-limit, HTTP proxy  :3000
 │   ├── claims-service/       # FNOL, workflow, media, Kafka  :3001
 │   ├── workshop-service/     # Estimates, negotiation         :3002
-│   └── admin-service/        # Tenants, users, RBAC           :3003
+│   ├── admin-service/        # Tenants, users, RBAC           :3003
+│   ├── web-insurer/          # Next.js adjuster dashboard     :3010
+│   └── web-workshop/         # Next.js workshop portal        :3011
 ├── packages/                 # Shared workspace packages
 │   ├── shared-types/         # Canonical TypeScript interfaces
 │   ├── db-client/            # Prisma client + withTenant()
@@ -93,9 +96,7 @@ autoclaimx-platform/
 │   ├── negotiation-llm/      # Claude + LangChain agent       :8002
 │   ├── fraud-ml/             # ELA forgery + Neo4j graph      :8003
 │   └── ocr-extraction/       # PDF estimate parser            :8004
-└── apps/
-    ├── web-insurer/          # Next.js adjuster dashboard     :3010
-    └── web-workshop/         # Next.js workshop portal        :3011
+└── infra/                    # Docker, Prometheus, Grafana config
 ```
 
 ### Request Flow
@@ -209,7 +210,7 @@ Client ──▶ api-gateway (:3000)
 ### 1. Clone and install
 
 ```bash
-git clone https://github.com/your-org/autoclaimx-platform.git
+git clone https://github.com/nikamrohit18/autoclaimx-platform.git
 cd autoclaimx-platform
 pnpm install
 ```
@@ -465,6 +466,38 @@ POST /claims  ──▶  claims-service  ──▶  Kafka: claim.created
 
 ---
 
+## Testing
+
+The project has full test coverage across all services. No running infrastructure (DB, Kafka, Redis) is needed — all external dependencies are mocked.
+
+### Unit Tests — 56 tests (NestJS) + 28 tests (Python)
+
+```bash
+# All NestJS services via Turborepo
+pnpm test
+
+# Individual services
+pnpm --filter @autoclaimx/admin-service test     # 7 tests
+pnpm --filter @autoclaimx/api-gateway test       # 15 tests
+pnpm --filter @autoclaimx/claims-service test    # 25 tests
+pnpm --filter @autoclaimx/workshop-service test  # 9 tests
+
+# Python AI services
+python -m pytest ai-services/fraud-ml/tests/ -v          # 18 tests
+python -m pytest ai-services/negotiation-llm/tests/ -v   # 10 tests
+```
+
+### E2E / Integration Tests — 37 tests (NestJS Supertest)
+
+```bash
+pnpm --filter @autoclaimx/admin-service test:e2e     # 9 tests
+pnpm --filter @autoclaimx/api-gateway test:e2e       # 12 tests
+pnpm --filter @autoclaimx/claims-service test:e2e    # 9 tests
+pnpm --filter @autoclaimx/workshop-service test:e2e  # 7 tests
+```
+
+---
+
 ## Demo Data
 
 Running `pnpm db:seed` inserts the following demo data into the `stellar-insurance` tenant:
@@ -481,9 +514,9 @@ Running `pnpm db:seed` inserts the following demo data into the `stellar-insuran
 
 | Phone | Name |
 |---|---|
-| `+60123456789` | Ahmad Farid |
-| `+60198765432` | Siti Noraini |
-| `+60111234567` | Kumar Rajan |
+| `+60100000001` | Ahmad Farid |
+| `+60100000002` | Siti Noraini |
+| `+60100000003` | Kumar Rajan |
 
 ### Sample claims
 
@@ -505,4 +538,4 @@ Running `pnpm db:seed` inserts the following demo data into the `stellar-insuran
 
 ## License
 
-Private — All rights reserved. © 2024 AutoClaimX.
+Private — All rights reserved. © 2026 AutoClaimX.

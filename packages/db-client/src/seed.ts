@@ -87,33 +87,33 @@ async function main() {
   });
 
   const ph1 = await prisma.user.upsert({
-    where: { phone: '+60123456789' },
+    where: { phone: '+60100000001' },
     update: {},
     create: {
       tenantId: tenant.id,
-      phone: '+60123456789',
+      phone: '+60100000001',
       name: 'Ahmad Farid',
       role: UserRole.POLICYHOLDER,
     },
   });
 
   const ph2 = await prisma.user.upsert({
-    where: { phone: '+60198765432' },
+    where: { phone: '+60100000002' },
     update: {},
     create: {
       tenantId: tenant.id,
-      phone: '+60198765432',
+      phone: '+60100000002',
       name: 'Siti Noraini',
       role: UserRole.POLICYHOLDER,
     },
   });
 
   const ph3 = await prisma.user.upsert({
-    where: { phone: '+60111234567' },
+    where: { phone: '+60100000003' },
     update: {},
     create: {
       tenantId: tenant.id,
-      phone: '+60111234567',
+      phone: '+60100000003',
       name: 'Kumar Rajan',
       role: UserRole.POLICYHOLDER,
     },
