@@ -2,6 +2,7 @@
 
 > **AI-powered motor insurance claims negotiation SaaS** — from First Notice of Loss to settled claim, fully automated.
 
+[![CI](https://github.com/nikamrohit18/autoclaimx-platform/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/nikamrohit18/autoclaimx-platform/actions/workflows/ci.yml)
 [![Node.js](https://img.shields.io/badge/Node.js-20%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org)
 [![pnpm](https://img.shields.io/badge/pnpm-9-F69220?logo=pnpm&logoColor=white)](https://pnpm.io)
 [![Turborepo](https://img.shields.io/badge/Turborepo-2-EF4444?logo=turborepo&logoColor=white)](https://turbo.build)
