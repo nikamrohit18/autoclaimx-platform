@@ -123,7 +123,7 @@ jobs:
       - name: Run E2E tests
         run: |
           for service in admin-service api-gateway claims-service workshop-service; do
-            pnpm --filter @autoclaimx/$service test:e2e -- --reporters=default --reporters=jest-html-reporter --json --outputFile=e2e-results.json
+            (cd apps/$service && ./node_modules/.bin/jest --config test/jest-e2e.config.js --runInBand --reporters=default --reporters=jest-html-reporter --json --outputFile=e2e-results.json)
           done
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/autoclaimx_test
