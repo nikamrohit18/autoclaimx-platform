@@ -12,8 +12,8 @@ RUN pnpm install --frozen-lockfile
 COPY . .
 RUN pnpm --filter @autoclaimx/shared-types build
 RUN pnpm --filter @autoclaimx/config build
-RUN pnpm --filter @autoclaimx/db-client build
 RUN DATABASE_URL=postgresql://placeholder/placeholder pnpm --filter @autoclaimx/db-client generate
+RUN pnpm --filter @autoclaimx/db-client build
 RUN pnpm --filter @autoclaimx/admin-service build
 
 FROM node:20-alpine AS runner
