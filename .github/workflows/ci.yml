@@ -94,7 +94,7 @@ jobs:
           DATABASE_URL: postgresql://test:test@localhost:5432/autoclaimx_test
 
       - name: Run tests
-        run: pnpm test
+        run: pnpm test -- --reporters=default --reporters=jest-html-reporter --json --outputFile=jest-results.json
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/autoclaimx_test
           REDIS_URL: redis://localhost:6379
@@ -102,6 +102,54 @@ jobs:
           JWT_SECRET: test-secret-for-ci-only-32chars-long
           INTERNAL_SERVICE_SECRET: test-internal-secret-16ch
           ANTHROPIC_API_KEY: test-key
+          JEST_HTML_REPORTER_OUTPUT_PATH: test-report.html
+          JEST_HTML_REPORTER_PAGE_TITLE: AutoClaimX Node.js Test Suite
+          JEST_HTML_REPORTER_INCLUDE_CONSOLE_LOG: "false"
+
+      - name: Write GitHub job summary
+        if: always()
+        run: |
+          node -e "
+          const fs = require('fs');
+          const paths = [
+            'apps/admin-service/jest-results.json',
+            'apps/api-gateway/jest-results.json',
+            'apps/claims-service/jest-results.json',
+            'apps/workshop-service/jest-results.json',
+          ];
+          let total = 0, passed = 0, failed = 0;
+          const rows = [];
+          for (const p of paths) {
+            if (!fs.existsSync(p)) continue;
+            const r = JSON.parse(fs.readFileSync(p, 'utf8'));
+            const svc = p.split('/')[1];
+            const t = r.numTotalTests, pa = r.numPassedTests, fa = r.numFailedTests;
+            total += t; passed += pa; failed += fa;
+            const icon = fa > 0 ? ':x:' : ':white_check_mark:';
+            rows.push('| ' + icon + ' | \`' + svc + '\` | ' + pa + ' / ' + t + ' |');
+          }
+          const allPass = failed === 0;
+          const lines = [
+            '## ' + (allPass ? ':white_check_mark:' : ':x:') + ' Node.js Test Results',
+            '',
+            '| | Service | Passed |',
+            '|---|---|---|',
+            ...rows,
+            '',
+            '**Total: ' + passed + ' / ' + total + ' passed**',
+            '',
+            'Full HTML reports are available in the **test-reports-node** artifact below.',
+          ];
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines.join('\n') + '\n');
+          "
+
+      - name: Upload HTML test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports-node
+          path: apps/*/test-report.html
+          retention-days: 30
 
   # ── Python AI Service Tests ───────────────────────────────────────────────────
   test-python:
