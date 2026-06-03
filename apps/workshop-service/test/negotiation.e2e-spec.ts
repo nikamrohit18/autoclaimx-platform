@@ -155,7 +155,7 @@ describe('Workshop Service — /api/v1/negotiations (E2E)', () => {
         .mockResolvedValueOnce({ ...BASE_SESSION, currentRound: 1 })   // workshopCounter lookup
         .mockResolvedValueOnce({ ...BASE_SESSION, currentRound: 1, offers: [] }); // generateAiOffer lookup
 
-      const res = await request(app.getHttpServer())
+      await request(app.getHttpServer())
         .post('/api/v1/negotiations/sess-1/counter')
         .set('x-internal-tenant-id', TENANT)
         .send({ amount: 4800, message: 'Counter at MYR 4,800' })

@@ -1,4 +1,4 @@
-import { IsString, IsDateString, IsNumber, IsOptional, IsIn, Min, Max } from 'class-validator';
+import { IsString, IsDateString, IsNumber, IsOptional, Min, Max } from 'class-validator';
 
 export class CreateClaimDto {
   @IsString()

@@ -14,6 +14,12 @@ module.exports = {
       files: ['**/*.ts', '**/*.tsx'],
       extends: ['plugin:@typescript-eslint/recommended'],
     },
+    {
+      files: ['**/*.spec.ts', '**/*.e2e-spec.ts'],
+      rules: {
+        '@typescript-eslint/no-var-requires': 'off',
+      },
+    },
   ],
   ignorePatterns: ['dist/', '.next/', 'node_modules/', '*.js'],
 };

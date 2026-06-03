@@ -31,7 +31,7 @@ type SortDir = 'asc' | 'desc';
 const RISK_ORDER: Record<string, number> = { LOW: 0, MEDIUM: 1, HIGH: 2, CRITICAL: 3 };
 const PAGE_SIZES = [10, 25, 50];
 
-function SortIcon({ col, active, dir }: { col: string; active: boolean; dir: SortDir }) {
+function SortIcon({ col: _col, active, dir }: { col: string; active: boolean; dir: SortDir }) {
   return (
     <span className={`ml-1 inline-block text-[10px] ${active ? 'text-blue-600' : 'text-gray-300'}`}>
       {active ? (dir === 'asc' ? '▲' : '▼') : '⇅'}
