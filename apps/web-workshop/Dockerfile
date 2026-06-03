@@ -2,16 +2,11 @@ FROM node:20-alpine AS base
 RUN corepack enable && corepack prepare pnpm@9.4.0 --activate
 WORKDIR /app
 
-FROM base AS deps
-COPY .npmrc package.json pnpm-workspace.yaml pnpm-lock.yaml* ./
+FROM base AS build
+COPY .npmrc package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY apps/web-workshop/package.json ./apps/web-workshop/
 COPY packages/shared-types/package.json ./packages/shared-types/
 RUN pnpm install --frozen-lockfile
-
-FROM base AS build
-COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/apps/web-workshop/node_modules ./apps/web-workshop/node_modules
-COPY --from=deps /app/packages ./packages
 COPY . .
 RUN pnpm --filter @autoclaimx/shared-types build
 RUN pnpm --filter @autoclaimx/web-workshop build
