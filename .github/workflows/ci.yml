@@ -108,7 +108,7 @@ jobs:
           pnpm --filter @autoclaimx/db-client build
 
       - name: Run unit tests
-        run: pnpm test -- --reporters=default --reporters=jest-html-reporter --json --outputFile=jest-results.json
+        run: pnpm exec turbo run test -- --reporters=default --reporters=jest-html-reporter --json --outputFile=jest-results.json
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/autoclaimx_test
           REDIS_URL: redis://localhost:6379
