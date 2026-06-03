@@ -4,7 +4,6 @@ The Anthropic client is mocked — no real API calls are made.
 """
 from __future__ import annotations
 
-import json
 import os
 import pytest
 from unittest.mock import MagicMock, patch
@@ -61,11 +60,22 @@ def _make_agent_with_mock_client() -> tuple[NegotiationAgent, MagicMock]:
     return agent, mock_client
 
 
-def _set_llm_response(mock_client: MagicMock, offer: dict) -> None:
-    """Configure the mock client to return a JSON-wrapped offer string."""
-    raw = f"```json\n{json.dumps(offer)}\n```"
+def _set_tool_use_response(mock_client: MagicMock, offer: dict) -> None:
+    """Configure the mock client to return a tool_use block containing the offer."""
+    tool_block = MagicMock()
+    tool_block.type = "tool_use"
+    tool_block.input = offer
     mock_response = MagicMock()
-    mock_response.content = [MagicMock(text=raw)]
+    mock_response.content = [tool_block]
+    mock_client.messages.create.return_value = mock_response
+
+
+def _set_no_tool_response(mock_client: MagicMock) -> None:
+    """Configure the mock client to return a response with no tool_use block."""
+    text_block = MagicMock()
+    text_block.type = "text"
+    mock_response = MagicMock()
+    mock_response.content = [text_block]
     mock_client.messages.create.return_value = mock_response
 
 
@@ -74,10 +84,11 @@ def _set_llm_response(mock_client: MagicMock, offer: dict) -> None:
 class TestGenerateOffer:
     def test_returns_negotiation_offer_output_on_valid_response(self):
         agent, mock_client = _make_agent_with_mock_client()
-        _set_llm_response(mock_client, SAMPLE_OFFER)
+        _set_tool_use_response(mock_client, SAMPLE_OFFER)
 
         result = agent.generate_offer(
             claim_id="c1",
+            claim_number="ACX-2024-00001",
             workshop_name="AutoFix KL",
             current_round=1,
             max_rounds=3,
@@ -96,10 +107,11 @@ class TestGenerateOffer:
 
     def test_calls_anthropic_messages_create_exactly_once(self):
         agent, mock_client = _make_agent_with_mock_client()
-        _set_llm_response(mock_client, SAMPLE_OFFER)
+        _set_tool_use_response(mock_client, SAMPLE_OFFER)
 
         agent.generate_offer(
             claim_id="c1",
+            claim_number="ACX-2024-00001",
             workshop_name="AutoFix",
             current_round=1,
             max_rounds=3,
@@ -115,11 +127,11 @@ class TestGenerateOffer:
 
     def test_should_accept_true_when_llm_signals_acceptance(self):
         agent, mock_client = _make_agent_with_mock_client()
-        _set_llm_response(mock_client, {**SAMPLE_OFFER, "should_accept": True, "should_escalate": False})
+        _set_tool_use_response(mock_client, {**SAMPLE_OFFER, "should_accept": True, "should_escalate": False})
 
         result = agent.generate_offer(
-            claim_id="c2", workshop_name="W", current_round=2, max_rounds=3,
-            style="BALANCED", currency="MYR",
+            claim_id="c2", claim_number="ACX-2024-00002", workshop_name="W",
+            current_round=2, max_rounds=3, style="BALANCED", currency="MYR",
             damage_report={}, workshop_estimate={}, benchmark_data={}, conversation_history=[],
         )
 
@@ -127,80 +139,102 @@ class TestGenerateOffer:
 
     def test_should_escalate_true_on_final_round_signal(self):
         agent, mock_client = _make_agent_with_mock_client()
-        _set_llm_response(mock_client, {**SAMPLE_OFFER, "should_accept": False, "should_escalate": True})
+        _set_tool_use_response(mock_client, {**SAMPLE_OFFER, "should_accept": False, "should_escalate": True})
 
         result = agent.generate_offer(
-            claim_id="c3", workshop_name="W", current_round=3, max_rounds=3,
-            style="AGGRESSIVE", currency="MYR",
+            claim_id="c3", claim_number="ACX-2024-00003", workshop_name="W",
+            current_round=3, max_rounds=3, style="AGGRESSIVE", currency="MYR",
             damage_report={}, workshop_estimate={}, benchmark_data={}, conversation_history=[],
         )
 
         assert result.should_escalate is True
 
-    def test_parses_json_without_markdown_fences(self):
+    def test_raises_when_no_tool_use_block_in_response(self):
         agent, mock_client = _make_agent_with_mock_client()
-        raw = json.dumps(SAMPLE_OFFER)  # no ``` fences
-        mock_response = MagicMock()
-        mock_response.content = [MagicMock(text=raw)]
-        mock_client.messages.create.return_value = mock_response
+        _set_no_tool_response(mock_client)
 
-        result = agent.generate_offer(
-            claim_id="c4", workshop_name="W", current_round=1, max_rounds=3,
-            style="BALANCED", currency="MYR",
-            damage_report={}, workshop_estimate={}, benchmark_data={}, conversation_history=[],
-        )
-
-        assert result.recommended_total == 4200.0
-
-    def test_raises_on_unparseable_llm_response(self):
-        agent, mock_client = _make_agent_with_mock_client()
-        mock_response = MagicMock()
-        mock_response.content = [MagicMock(text="This is not JSON at all.")]
-        mock_client.messages.create.return_value = mock_response
-
-        with pytest.raises(Exception):
+        with pytest.raises(ValueError, match="No tool_use block"):
             agent.generate_offer(
-                claim_id="c5", workshop_name="W", current_round=1, max_rounds=3,
-                style="BALANCED", currency="MYR",
+                claim_id="c4", claim_number="ACX-2024-00004", workshop_name="W",
+                current_round=1, max_rounds=3, style="BALANCED", currency="MYR",
                 damage_report={}, workshop_estimate={}, benchmark_data={}, conversation_history=[],
             )
 
     def test_conversation_history_is_included_in_prompt(self):
         agent, mock_client = _make_agent_with_mock_client()
-        _set_llm_response(mock_client, SAMPLE_OFFER)
+        _set_tool_use_response(mock_client, SAMPLE_OFFER)
 
         history = [{"round": "1", "offerer": "AI", "amount": "4200", "currency": "MYR", "message": "First offer"}]
 
         agent.generate_offer(
-            claim_id="c6", workshop_name="W", current_round=2, max_rounds=3,
-            style="BALANCED", currency="MYR",
+            claim_id="c5", claim_number="ACX-2024-00005", workshop_name="W",
+            current_round=2, max_rounds=3, style="BALANCED", currency="MYR",
             damage_report={}, workshop_estimate={}, benchmark_data={},
             conversation_history=history,
         )
 
         call_kwargs = mock_client.messages.create.call_args
-        messages = call_kwargs.kwargs.get("messages") or call_kwargs.args[0] if call_kwargs.args else []
-        if not messages and call_kwargs.kwargs:
-            messages = call_kwargs.kwargs.get("messages", [])
+        messages = call_kwargs.kwargs.get("messages", [])
         user_content = messages[0]["content"] if messages else ""
         assert "First offer" in user_content
 
+    def test_confidence_value_is_preserved(self):
+        agent, mock_client = _make_agent_with_mock_client()
+        _set_tool_use_response(mock_client, SAMPLE_OFFER)
 
-# ── _parse_response ────────────────────────────────────────────────────────────
+        result = agent.generate_offer(
+            claim_id="c6", claim_number="ACX-2024-00006", workshop_name="W",
+            current_round=1, max_rounds=3, style="BALANCED", currency="MYR",
+            damage_report={}, workshop_estimate={}, benchmark_data={}, conversation_history=[],
+        )
 
-class TestParseResponse:
-    def test_parses_json_fenced_response(self):
-        agent, _client = _make_agent_with_mock_client()
-        raw = f"```json\n{json.dumps(SAMPLE_OFFER)}\n```"
-        result = agent._parse_response(raw)
-        assert result.recommended_total == 4200.0
-
-    def test_parses_plain_json_response(self):
-        agent, _client = _make_agent_with_mock_client()
-        result = agent._parse_response(json.dumps(SAMPLE_OFFER))
         assert result.confidence == pytest.approx(0.87)
 
-    def test_raises_on_invalid_json(self):
-        agent, _client = _make_agent_with_mock_client()
-        with pytest.raises(Exception):
-            agent._parse_response("not json")
+    def test_reasoning_field_is_preserved(self):
+        agent, mock_client = _make_agent_with_mock_client()
+        _set_tool_use_response(mock_client, SAMPLE_OFFER)
+
+        result = agent.generate_offer(
+            claim_id="c7", claim_number="ACX-2024-00007", workshop_name="W",
+            current_round=1, max_rounds=3, style="CUSTOMER_FIRST", currency="MYR",
+            damage_report={}, workshop_estimate={}, benchmark_data={}, conversation_history=[],
+        )
+
+        assert "benchmark" in result.reasoning.lower()
+
+    def test_line_items_are_returned(self):
+        agent, mock_client = _make_agent_with_mock_client()
+        _set_tool_use_response(mock_client, SAMPLE_OFFER)
+
+        result = agent.generate_offer(
+            claim_id="c8", claim_number="ACX-2024-00008", workshop_name="W",
+            current_round=1, max_rounds=3, style="BALANCED", currency="MYR",
+            damage_report={}, workshop_estimate={}, benchmark_data={}, conversation_history=[],
+        )
+
+        assert len(result.line_items) == 1
+        assert result.line_items[0].description == "Front bumper replacement"
+
+    def test_recommended_total_matches_offer(self):
+        agent, mock_client = _make_agent_with_mock_client()
+        _set_tool_use_response(mock_client, {**SAMPLE_OFFER, "recommended_total": 3800.0})
+
+        result = agent.generate_offer(
+            claim_id="c9", claim_number="ACX-2024-00009", workshop_name="W",
+            current_round=2, max_rounds=5, style="AGGRESSIVE", currency="MYR",
+            damage_report={}, workshop_estimate={}, benchmark_data={}, conversation_history=[],
+        )
+
+        assert result.recommended_total == pytest.approx(3800.0)
+
+    def test_message_field_is_preserved(self):
+        agent, mock_client = _make_agent_with_mock_client()
+        _set_tool_use_response(mock_client, SAMPLE_OFFER)
+
+        result = agent.generate_offer(
+            claim_id="c10", claim_number="ACX-2024-00010", workshop_name="W",
+            current_round=1, max_rounds=3, style="BALANCED", currency="MYR",
+            damage_report={}, workshop_estimate={}, benchmark_data={}, conversation_history=[],
+        )
+
+        assert result.message == "We propose MYR 4,200 based on benchmark data."

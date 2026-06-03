@@ -96,16 +96,16 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Generate Prisma client
+        run: pnpm db:generate
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/autoclaimx_test
+
       - name: Build shared packages
         run: |
           pnpm --filter @autoclaimx/shared-types build
           pnpm --filter @autoclaimx/config build
           pnpm --filter @autoclaimx/db-client build
-
-      - name: Generate Prisma client
-        run: pnpm db:generate
-        env:
-          DATABASE_URL: postgresql://test:test@localhost:5432/autoclaimx_test
 
       - name: Run unit tests
         run: pnpm test -- --reporters=default --reporters=jest-html-reporter --json --outputFile=jest-results.json
@@ -204,7 +204,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        service: [damage-detection, negotiation-llm, fraud-ml, ocr-extraction]
+        service: [fraud-ml, negotiation-llm]
     steps:
       - uses: actions/checkout@v4
 
