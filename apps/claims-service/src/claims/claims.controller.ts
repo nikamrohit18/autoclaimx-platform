@@ -66,6 +66,14 @@ export class ClaimsController {
     return this.claimsService.updateStatus(tenantId, id, body.status);
   }
 
+  @Get(':id/media')
+  listMedia(
+    @Headers('x-internal-tenant-id') tenantId: string,
+    @Param('id') claimId: string,
+  ) {
+    return this.mediaService.listMedia(tenantId, claimId);
+  }
+
   @Post(':id/media/upload-url')
   getUploadUrl(
     @Headers('x-internal-tenant-id') tenantId: string,

@@ -37,6 +37,13 @@ export const claimsApi = {
   getDamageReport: (claimId: string) => api.get(`/claims/${claimId}/damage-report`).then((r) => r.data),
 
   getFraudScore: (claimId: string) => api.get(`/claims/${claimId}/fraud-score`).then((r) => r.data),
+
+  getMedia: (claimId: string) =>
+    api.get(`/claims/${claimId}/media`).then((r) => r.data as Array<{
+      id: string; mimeType: string; mediaType: string;
+      processingStatus: string; sizeBytes: number;
+      uploadedAt: string; viewUrl: string | null;
+    }>),
 };
 
 // ── Negotiations ──────────────────────────────────────────────────────────────

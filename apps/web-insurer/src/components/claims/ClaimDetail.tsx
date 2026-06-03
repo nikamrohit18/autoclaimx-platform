@@ -6,6 +6,7 @@ import { claimsApi, negotiationsApi, workshopsApi } from '@/lib/api';
 import { useClaimEvents } from '@/hooks/useClaimEvents';
 import { DamageViewer } from '@/components/damage/DamageViewer';
 import { FraudScoreCard } from '@/components/fraud/FraudScoreCard';
+import { MediaGallery } from '@/components/claims/MediaGallery';
 import { NegotiationTimeline } from '@/components/negotiation/NegotiationTimeline';
 import type { Claim, Workshop } from '@autoclaimx/shared-types';
 
@@ -122,6 +123,9 @@ export function ClaimDetail({ claimId }: ClaimDetailProps) {
           </div>
         ))}
       </div>
+
+      {/* Uploaded Media */}
+      <MediaGallery claimId={claimId} />
 
       {/* AI Damage Report */}
       {claim.damageReport && <DamageViewer damageReport={claim.damageReport} />}

@@ -1,5 +1,5 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { withTenant, MediaType } from '@autoclaimx/db-client';
 import { KafkaService, KAFKA_TOPICS } from '../kafka/kafka.service';
@@ -13,6 +13,36 @@ export class MediaService {
   private readonly bucket = process.env.S3_MEDIA_BUCKET ?? 'autoclaimx-media-dev';
 
   constructor(private readonly kafka: KafkaService) {}
+
+  async listMedia(tenantId: string, claimId: string) {
+    const assets = await withTenant(tenantId, (tx) =>
+      tx.claimMedia.findMany({
+        where: { claimId, tenantId },
+        orderBy: { uploadedAt: 'asc' },
+      }),
+    );
+
+    return Promise.all(
+      assets.map(async (a) => {
+        let viewUrl: string | null = null;
+        try {
+          const cmd = new GetObjectCommand({ Bucket: a.s3Bucket, Key: a.s3Key });
+          viewUrl = await getSignedUrl(this.s3, cmd, { expiresIn: 3600 });
+        } catch {
+          // AWS creds not available in dev — viewUrl stays null
+        }
+        return {
+          id: a.id,
+          mimeType: a.mimeType,
+          mediaType: a.mediaType,
+          processingStatus: a.processingStatus,
+          sizeBytes: a.sizeBytes,
+          uploadedAt: a.uploadedAt,
+          viewUrl,
+        };
+      }),
+    );
+  }
 
   async generatePresignedUploadUrl(
     tenantId: string,
