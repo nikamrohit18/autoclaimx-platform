@@ -93,7 +93,7 @@ jobs:
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/autoclaimx_test
 
-      - name: Run tests
+      - name: Run unit tests
         run: pnpm test -- --reporters=default --reporters=jest-html-reporter --json --outputFile=jest-results.json
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/autoclaimx_test
@@ -103,7 +103,23 @@ jobs:
           INTERNAL_SERVICE_SECRET: test-internal-secret-16ch
           ANTHROPIC_API_KEY: test-key
           JEST_HTML_REPORTER_OUTPUT_PATH: test-report.html
-          JEST_HTML_REPORTER_PAGE_TITLE: AutoClaimX Node.js Test Suite
+          JEST_HTML_REPORTER_PAGE_TITLE: AutoClaimX Unit Test Suite
+          JEST_HTML_REPORTER_INCLUDE_CONSOLE_LOG: "false"
+
+      - name: Run E2E tests
+        run: |
+          for service in admin-service api-gateway claims-service workshop-service; do
+            pnpm --filter @autoclaimx/$service test:e2e -- --reporters=default --reporters=jest-html-reporter --json --outputFile=e2e-results.json
+          done
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/autoclaimx_test
+          REDIS_URL: redis://localhost:6379
+          KAFKA_BROKERS: localhost:9092
+          JWT_SECRET: test-secret-for-ci-only-32chars-long
+          INTERNAL_SERVICE_SECRET: test-internal-secret-16ch
+          ANTHROPIC_API_KEY: test-key
+          JEST_HTML_REPORTER_OUTPUT_PATH: e2e-report.html
+          JEST_HTML_REPORTER_PAGE_TITLE: AutoClaimX E2E Test Suite
           JEST_HTML_REPORTER_INCLUDE_CONSOLE_LOG: "false"
 
       - name: Write GitHub job summary
@@ -111,34 +127,47 @@ jobs:
         run: |
           node -e "
           const fs = require('fs');
-          const paths = [
-            'apps/admin-service/jest-results.json',
-            'apps/api-gateway/jest-results.json',
-            'apps/claims-service/jest-results.json',
-            'apps/workshop-service/jest-results.json',
-          ];
-          let total = 0, passed = 0, failed = 0;
-          const rows = [];
-          for (const p of paths) {
-            if (!fs.existsSync(p)) continue;
-            const r = JSON.parse(fs.readFileSync(p, 'utf8'));
-            const svc = p.split('/')[1];
-            const t = r.numTotalTests, pa = r.numPassedTests, fa = r.numFailedTests;
-            total += t; passed += pa; failed += fa;
-            const icon = fa > 0 ? ':x:' : ':white_check_mark:';
-            rows.push('| ' + icon + ' | \`' + svc + '\` | ' + pa + ' / ' + t + ' |');
+
+          function buildSection(title, svcPaths, resultFile) {
+            let total = 0, passed = 0, failed = 0;
+            const rows = [];
+            for (const dir of svcPaths) {
+              const f = dir + '/' + resultFile;
+              if (!fs.existsSync(f)) continue;
+              const r = JSON.parse(fs.readFileSync(f, 'utf8'));
+              const svc = dir.split('/')[1];
+              const t = r.numTotalTests, pa = r.numPassedTests, fa = r.numFailedTests;
+              total += t; passed += pa; failed += fa;
+              const icon = fa > 0 ? ':x:' : ':white_check_mark:';
+              rows.push('| ' + icon + ' | \`' + svc + '\` | ' + pa + ' / ' + t + ' |');
+            }
+            const allPass = failed === 0;
+            return [
+              '### ' + (allPass ? ':white_check_mark:' : ':x:') + ' ' + title,
+              '',
+              '| | Service | Passed |',
+              '|---|---|---|',
+              ...rows,
+              '',
+              '**Total: ' + passed + ' / ' + total + ' passed**',
+            ].join('\n');
           }
-          const allPass = failed === 0;
+
+          const svcDirs = [
+            'apps/admin-service',
+            'apps/api-gateway',
+            'apps/claims-service',
+            'apps/workshop-service',
+          ];
+
           const lines = [
-            '## ' + (allPass ? ':white_check_mark:' : ':x:') + ' Node.js Test Results',
+            '## Node.js Test Results',
             '',
-            '| | Service | Passed |',
-            '|---|---|---|',
-            ...rows,
+            buildSection('Unit Tests', svcDirs, 'jest-results.json'),
             '',
-            '**Total: ' + passed + ' / ' + total + ' passed**',
+            buildSection('E2E Tests',  svcDirs, 'e2e-results.json'),
             '',
-            'Full HTML reports are available in the **test-reports-node** artifact below.',
+            'HTML reports are in the **test-reports-node** artifact below.',
           ];
           fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines.join('\n') + '\n');
           "
@@ -148,7 +177,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: test-reports-node
-          path: apps/*/test-report.html
+          path: |
+            apps/*/test-report.html
+            apps/*/e2e-report.html
           retention-days: 30
 
   # ── Python AI Service Tests ───────────────────────────────────────────────────
@@ -170,15 +201,60 @@ jobs:
           cache-dependency-path: ai-services/${{ matrix.service }}/requirements.txt
 
       - name: Install dependencies
-        run: pip install -r ai-services/${{ matrix.service }}/requirements.txt
+        run: |
+          pip install -r ai-services/${{ matrix.service }}/requirements.txt
+          pip install pytest-html pytest-json-report
 
       - name: Run tests
-        run: python -m pytest ai-services/${{ matrix.service }}/tests/ -v
+        run: |
+          python -m pytest ai-services/${{ matrix.service }}/tests/ -v \
+            --html=ai-services/${{ matrix.service }}/test-report.html \
+            --self-contained-html \
+            --json-report \
+            --json-report-file=ai-services/${{ matrix.service }}/pytest-results.json
         env:
           AWS_REGION: us-east-1
           AWS_ACCESS_KEY_ID: test
           AWS_SECRET_ACCESS_KEY: test
           ANTHROPIC_API_KEY: test-key
+
+      - name: Write GitHub job summary
+        if: always()
+        run: |
+          python -c "
+import json, os, sys
+p = 'ai-services/${{ matrix.service }}/pytest-results.json'
+if not os.path.exists(p):
+    sys.exit(0)
+with open(p) as f:
+    r = json.load(f)
+s = r.get('summary', {})
+total  = s.get('total', 0)
+passed = s.get('passed', 0)
+failed = s.get('failed', 0) + s.get('error', 0)
+icon = ':white_check_mark:' if failed == 0 else ':x:'
+lines = [
+  '### ' + icon + ' Python Tests — ${{ matrix.service }}',
+  '',
+  '| | Count |',
+  '|---|---|',
+  '| :white_check_mark: Passed | ' + str(passed) + ' |',
+  '| :x: Failed | ' + str(failed) + ' |',
+  '| Total | ' + str(total) + ' |',
+  '',
+  'HTML report is in the **test-report-python-${{ matrix.service }}** artifact below.',
+]
+with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as f:
+    f.write('\n'.join(lines) + '\n')
+"
+
+      - name: Upload HTML test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report-python-${{ matrix.service }}
+          path: ai-services/${{ matrix.service }}/test-report.html
+          retention-days: 30
 
   # ── Build & Push Docker Images ────────────────────────────────────────────────
   docker-build-push:
