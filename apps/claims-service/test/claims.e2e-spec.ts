@@ -21,6 +21,9 @@ const mockTx = {
 
 jest.mock('@autoclaimx/db-client', () => ({
   withTenant: jest.fn((_tid: string, fn: (tx: typeof mockTx) => unknown) => fn(mockTx)),
+  prisma: {
+    user: { findUnique: jest.fn().mockResolvedValue(null) },
+  },
   // ClaimStatus is used as a TS type — expose enough for the runtime enum check
   ClaimStatus: {},
   MediaType: {},
