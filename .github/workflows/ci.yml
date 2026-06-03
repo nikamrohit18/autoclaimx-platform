@@ -33,6 +33,17 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Build shared packages
+        run: |
+          pnpm --filter @autoclaimx/shared-types build
+          pnpm --filter @autoclaimx/config build
+          pnpm --filter @autoclaimx/db-client build
+
+      - name: Generate Prisma client
+        run: pnpm db:generate
+        env:
+          DATABASE_URL: postgresql://localhost:5432/placeholder
+
       - name: Lint
         run: pnpm lint
 
