@@ -101,45 +101,46 @@ describe('FraudService', () => {
   });
 
   // ── applyImageScore ──────────────────────────────────────────────────────────
+  // Weights: behavioral 25%, image 55%, graph 20%
   describe('applyImageScore', () => {
-    it('merges image score with existing behavioral score using correct weights', async () => {
-      // behavioral=0.4 (weight 35%) + image=0.8 (weight 65%) = 0.14 + 0.52 = 0.66
-      mockTx.fraudScore.findUnique.mockResolvedValue({ behavioralScore: 0.4, flags: [] });
+    it('merges image score with existing behavioral+graph scores using correct weights', async () => {
+      // behavioral=0.4 (25%) + image=0.8 (55%) + graph=0 (20%) = 0.10 + 0.44 + 0 = 0.54
+      mockTx.fraudScore.findUnique.mockResolvedValue({ behavioralScore: 0.4, graphScore: 0, flags: [] });
       await service.applyImageScore('t1', 'c1', 0.8, []);
-      expect(mockTx.fraudScore.upsert.mock.calls[0][0].update.totalScore).toBeCloseTo(0.66, 2);
+      expect(mockTx.fraudScore.upsert.mock.calls[0][0].update.totalScore).toBeCloseTo(0.54, 2);
     });
 
     it('marks riskLevel HIGH when merged totalScore >= 0.6', async () => {
-      mockTx.fraudScore.findUnique.mockResolvedValue({ behavioralScore: 0.4, flags: [] });
-      await service.applyImageScore('t1', 'c1', 0.8, []);
+      // behavioral=0.4 (25%) + image=0.9 (55%) + graph=0.5 (20%) = 0.10 + 0.495 + 0.10 = 0.695 → HIGH
+      mockTx.fraudScore.findUnique.mockResolvedValue({ behavioralScore: 0.4, graphScore: 0.5, flags: [] });
+      await service.applyImageScore('t1', 'c1', 0.9, []);
       expect(mockTx.fraudScore.upsert.mock.calls[0][0].update.riskLevel).toBe('HIGH');
     });
 
     it('marks riskLevel MEDIUM when totalScore >= 0.3 and < 0.6', async () => {
-      // behavioral=0, image=0.5 → total = 0 + 0.325 = 0.325
-      mockTx.fraudScore.findUnique.mockResolvedValue({ behavioralScore: 0, flags: [] });
-      await service.applyImageScore('t1', 'c1', 0.5, []);
+      // behavioral=0 (25%) + image=0.6 (55%) + graph=0 (20%) = 0 + 0.33 + 0 = 0.33 → MEDIUM
+      mockTx.fraudScore.findUnique.mockResolvedValue({ behavioralScore: 0, graphScore: 0, flags: [] });
+      await service.applyImageScore('t1', 'c1', 0.6, []);
       expect(mockTx.fraudScore.upsert.mock.calls[0][0].update.riskLevel).toBe('MEDIUM');
     });
 
-    it('uses 0 behavioral score when no prior fraud record exists', async () => {
-      // no prior record → behavioral defaults to 0
-      // total = 0 * 0.35 + 0.5 * 0.65 = 0.325
+    it('uses 0 behavioral and graph scores when no prior fraud record exists', async () => {
+      // total = 0 * 0.25 + 0.5 * 0.55 + 0 * 0.20 = 0.275
       mockTx.fraudScore.findUnique.mockResolvedValue(null);
       await service.applyImageScore('t1', 'c1', 0.5, []);
-      expect(mockTx.fraudScore.upsert.mock.calls[0][0].update.totalScore).toBeCloseTo(0.325, 3);
+      expect(mockTx.fraudScore.upsert.mock.calls[0][0].update.totalScore).toBeCloseTo(0.275, 3);
     });
 
     it('merges incoming flags with existing behavioral flags', async () => {
       const existing = [{ type: 'HIGH_CLAIM_VELOCITY', description: '3 claims', severity: 'HIGH' }];
       const incoming = [{ type: 'IMAGE_FORGERY', description: 'ELA high', severity: 'HIGH' }];
-      mockTx.fraudScore.findUnique.mockResolvedValue({ behavioralScore: 0.2, flags: existing });
+      mockTx.fraudScore.findUnique.mockResolvedValue({ behavioralScore: 0.2, graphScore: 0, flags: existing });
       await service.applyImageScore('t1', 'c1', 0.6, incoming);
       expect(mockTx.fraudScore.upsert.mock.calls[0][0].update.flags).toHaveLength(2);
     });
 
     it('caps totalScore at 1.0 even with extreme inputs', async () => {
-      mockTx.fraudScore.findUnique.mockResolvedValue({ behavioralScore: 1.0, flags: [] });
+      mockTx.fraudScore.findUnique.mockResolvedValue({ behavioralScore: 1.0, graphScore: 1.0, flags: [] });
       await service.applyImageScore('t1', 'c1', 1.0, []);
       expect(mockTx.fraudScore.upsert.mock.calls[0][0].update.totalScore).toBeLessThanOrEqual(1.0);
     });

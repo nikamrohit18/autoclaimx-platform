@@ -41,6 +41,7 @@ from PIL import Image
 from pydantic import BaseModel
 
 from app.detectors.image_forgery import score_image_fraud
+from app.detectors.graph_fraud import score_graph_fraud
 from app import kafka_worker
 from prometheus_fastapi_instrumentator import Instrumentator
 
@@ -118,9 +119,16 @@ class GraphFraudResponse(BaseModel):
 
 @app.post("/analyze/graph", response_model=GraphFraudResponse)
 async def analyze_graph_fraud(req: GraphFraudRequest) -> GraphFraudResponse:
-    """
-    Neo4j graph fraud ring detection.
-    Phase 1: returns placeholder (0 score). Phase 2: full GNN queries.
-    """
-    # TODO Phase 2: connect to Neo4j, run Cypher fraud ring queries
-    return GraphFraudResponse(graph_score=0.0, flags=[], connected_flagged_claims=[])
+    """Neo4j graph fraud ring detection — vehicle reuse, claim velocity, suspicious workshop."""
+    graph_score, flags = score_graph_fraud(
+        claim_id=req.claim_id,
+        tenant_id=req.tenant_id,
+        policy_holder_id=req.policy_holder_id,
+        vehicle_plate=req.vehicle_plate,
+        workshop_id=req.workshop_id,
+    )
+    logger.info(
+        "Graph fraud score %.2f for claim %s (flags=%d)",
+        graph_score, req.claim_id, len(flags),
+    )
+    return GraphFraudResponse(graph_score=graph_score, flags=flags, connected_flagged_claims=[])

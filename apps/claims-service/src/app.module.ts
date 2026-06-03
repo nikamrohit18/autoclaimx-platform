@@ -8,6 +8,7 @@ import { FraudModule } from './fraud/fraud.module';
 import { HealthModule } from './health/health.module';
 import { KafkaModule } from './kafka/kafka.module';
 import { EventsModule } from './events/events.module';
+import { NotificationModule } from './notifications/notification.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { EventsModule } from './events/events.module';
     }),
     KafkaModule,
     EventsModule,
+    NotificationModule,
     ClaimsModule,
     WorkflowModule,
     FraudModule,

@@ -3,6 +3,7 @@ import { WorkflowService } from './workflow.service';
 import { KafkaService } from '../kafka/kafka.service';
 import { ClaimsService } from '../claims/claims.service';
 import { FraudService } from '../fraud/fraud.service';
+import { NotificationService } from '../notifications/notification.service';
 import { Counter } from 'prom-client';
 
 // ── Kafka subscribe captures callbacks by topic ────────────────────────────────
@@ -30,6 +31,12 @@ const mockFraud = {
 
 const mockKafkaCounter = { inc: jest.fn() } as unknown as Counter<string>;
 
+const mockNotifications = {
+  notifyClaimCreated:       jest.fn().mockResolvedValue(undefined),
+  notifyStatusChanged:      jest.fn().mockResolvedValue(undefined),
+  notifyNegotiationOutcome: jest.fn().mockResolvedValue(undefined),
+} as unknown as NotificationService;
+
 // ── Helpers ────────────────────────────────────────────────────────────────────
 function emit(topic: string, tenantId: string, payload: Record<string, unknown>) {
   const cb = topicCallbacks.get(topic);
@@ -42,7 +49,7 @@ describe('WorkflowService', () => {
   let service: WorkflowService;
 
   beforeAll(async () => {
-    service = new WorkflowService(mockKafka, mockClaims, mockFraud, mockKafkaCounter);
+    service = new WorkflowService(mockKafka, mockClaims, mockFraud, mockNotifications, mockKafkaCounter);
     await service.onModuleInit();
   });
 

@@ -91,6 +91,12 @@ export const workshopsApi = {
 
   get: (id: string) => api.get(`/workshops/${id}`).then((r) => r.data),
 
+  create: (body: { name: string; email?: string; phone?: string; address?: string; registrationNumber?: string }) =>
+    api.post('/workshops', body).then((r) => r.data),
+
+  update: (id: string, body: { name?: string; email?: string; phone?: string; address?: string; registrationNumber?: string; accreditationStatus?: string; active?: boolean }) =>
+    api.patch(`/workshops/${id}`, body).then((r) => r.data),
+
   getEstimates: (workshopId: string) =>
     api.get(`/workshops/${workshopId}/estimates`).then((r) => r.data as Array<{
       id: string; claimId: string; total: number; laborTotal: number;

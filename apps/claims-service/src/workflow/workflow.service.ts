@@ -4,6 +4,8 @@ import { Counter } from 'prom-client';
 import { KafkaService, KAFKA_TOPICS } from '../kafka/kafka.service';
 import { ClaimsService } from '../claims/claims.service';
 import { FraudService } from '../fraud/fraud.service';
+import { NotificationService } from '../notifications/notification.service';
+import { withTenant } from '@autoclaimx/db-client';
 import { ClaimCreatedPayload, DamageAnalyzedPayload, FraudScoreUpdatedPayload, NegotiationOfferMadePayload } from '@autoclaimx/shared-types';
 import { METRIC_KAFKA_MESSAGES_PROCESSED } from '../metrics/metrics.module';
 
@@ -16,6 +18,7 @@ export class WorkflowService implements OnModuleInit {
     private readonly kafka: KafkaService,
     private readonly claims: ClaimsService,
     private readonly fraud: FraudService,
+    private readonly notifications: NotificationService,
     @InjectMetric(METRIC_KAFKA_MESSAGES_PROCESSED) private readonly kafkaCounter: Counter<string>,
   ) {}
 
@@ -25,13 +28,26 @@ export class WorkflowService implements OnModuleInit {
       'claims-service-claim-consumer',
       async (event) => {
         this.kafkaCounter.inc({ topic: KAFKA_TOPICS.CLAIM_CREATED, status: 'success' });
-        this.logger.log(`Claim created: ${event.payload.claimId} — running behavioral fraud check`);
-        await this.fraud.scoreBehavioral(
-          event.tenantId,
-          event.payload.claimId,
-          event.payload.policyHolderId,
-          event.payload.vehiclePlate,
-        );
+        const { claimId, policyHolderId, vehiclePlate } = event.payload;
+        this.logger.log(`Claim created: ${claimId} — running behavioral + graph fraud check`);
+
+        await this.fraud.scoreBehavioral(event.tenantId, claimId, policyHolderId, vehiclePlate);
+
+        // Notify the assigned adjuster (best-effort — fetch claim to get contact details)
+        try {
+          const claim = await withTenant(event.tenantId, (tx) =>
+            tx.claim.findUnique({ where: { id: claimId }, select: { claimNumber: true, vehicleMake: true, vehicleModel: true } }),
+          );
+          if (claim) {
+            await this.notifications.notifyClaimCreated({
+              claimNumber:      claim.claimNumber,
+              policyHolderName: policyHolderId,
+              vehicleMake:      claim.vehicleMake,
+              vehicleModel:     claim.vehicleModel,
+              adjusterEmail:    process.env.DEFAULT_ADJUSTER_EMAIL,
+            });
+          }
+        } catch { /* non-critical */ }
       },
     );
 
@@ -60,6 +76,22 @@ export class WorkflowService implements OnModuleInit {
         if (autoHold) {
           await this.claims.updateStatus(event.tenantId, claimId, 'DISPUTED');
           this.logger.warn(`Auto-held claim ${claimId} due to fraud score`);
+
+          try {
+            const claim = await withTenant(event.tenantId, (tx) =>
+              tx.claim.findUnique({ where: { id: claimId }, select: { claimNumber: true, vehicleMake: true, vehicleModel: true } }),
+            );
+            if (claim) {
+              await this.notifications.notifyStatusChanged({
+                claimNumber:      claim.claimNumber,
+                policyHolderName: claimId,
+                status:           'DISPUTED',
+                vehicleMake:      claim.vehicleMake,
+                vehicleModel:     claim.vehicleModel,
+                adjusterEmail:    process.env.DEFAULT_ADJUSTER_EMAIL,
+              });
+            }
+          } catch { /* non-critical */ }
         }
       },
     );
@@ -69,17 +101,49 @@ export class WorkflowService implements OnModuleInit {
       'claims-service-negotiation-consumer',
       async (event) => {
         this.kafkaCounter.inc({ topic: KAFKA_TOPICS.NEGOTIATION_OFFER_MADE, status: 'success' });
-        const { claimId, round, offerer, sessionStatus } = event.payload;
+        const { claimId, round, offerer, sessionStatus, amount, currency } = event.payload;
+
         if (round === 1 && offerer === 'AI') {
           await this.claims.updateStatus(event.tenantId, claimId, 'NEGOTIATING', 'UNDER_ASSESSMENT');
           this.logger.log(`Claim ${claimId} → NEGOTIATING (round 1 AI offer sent)`);
         }
+
         if (sessionStatus === 'AGREED') {
           await this.claims.updateStatus(event.tenantId, claimId, 'SETTLED', 'NEGOTIATING');
           this.logger.log(`Claim ${claimId} → SETTLED (negotiation agreed)`);
+
+          try {
+            const claim = await withTenant(event.tenantId, (tx) =>
+              tx.claim.findUnique({ where: { id: claimId }, select: { claimNumber: true } }),
+            );
+            if (claim) {
+              await this.notifications.notifyNegotiationOutcome({
+                claimNumber:   claim.claimNumber,
+                outcome:       'AGREED',
+                finalAmount:   amount,
+                currency:      currency ?? 'USD',
+                adjusterEmail: process.env.DEFAULT_ADJUSTER_EMAIL,
+              });
+            }
+          } catch { /* non-critical */ }
+
         } else if (sessionStatus === 'ESCALATED') {
           await this.claims.updateStatus(event.tenantId, claimId, 'DISPUTED', 'NEGOTIATING');
           this.logger.log(`Claim ${claimId} → DISPUTED (negotiation escalated)`);
+
+          try {
+            const claim = await withTenant(event.tenantId, (tx) =>
+              tx.claim.findUnique({ where: { id: claimId }, select: { claimNumber: true } }),
+            );
+            if (claim) {
+              await this.notifications.notifyNegotiationOutcome({
+                claimNumber:   claim.claimNumber,
+                outcome:       'ESCALATED',
+                currency:      currency ?? 'USD',
+                adjusterEmail: process.env.DEFAULT_ADJUSTER_EMAIL,
+              });
+            }
+          } catch { /* non-critical */ }
         }
       },
     );

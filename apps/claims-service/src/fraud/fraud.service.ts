@@ -4,16 +4,33 @@ import { KafkaService, KAFKA_TOPICS } from '../kafka/kafka.service';
 import { FraudScoreUpdatedPayload, FraudRisk } from '@autoclaimx/shared-types';
 import { v4 as uuidv4 } from 'uuid';
 
-// Behavioral fraud checks run synchronously on claim creation.
-// Image and graph fraud are triggered asynchronously via the fraud-ml service.
+// Composite fraud score weights (must sum to 1.0)
+const W_BEHAVIORAL = 0.25;
+const W_IMAGE      = 0.55;
+const W_GRAPH      = 0.20;
+
+function computeTotal(behavioral: number, image: number, graph: number): number {
+  return Math.min(1, behavioral * W_BEHAVIORAL + image * W_IMAGE + graph * W_GRAPH);
+}
+
+function riskLevel(total: number): FraudRisk {
+  return total >= 0.6 ? 'HIGH' : total >= 0.3 ? 'MEDIUM' : 'LOW';
+}
+
 @Injectable()
 export class FraudService {
   private readonly logger = new Logger(FraudService.name);
+  private readonly fraudMlUrl = process.env.FRAUD_ML_URL ?? 'http://localhost:8003';
 
   constructor(private readonly kafka: KafkaService) {}
 
-  async scoreBehavioral(tenantId: string, claimId: string, policyHolderId: string, vehiclePlate: string): Promise<void> {
-    // Claim velocity: count claims in last 90 days for this policy holder
+  async scoreBehavioral(
+    tenantId: string,
+    claimId: string,
+    policyHolderId: string,
+    vehiclePlate: string,
+  ): Promise<void> {
+    // ── Behavioral: claim velocity in last 90 days ──────────────────────────
     const recentClaims = await withTenant(tenantId, (tx) =>
       tx.claim.count({
         where: {
@@ -35,7 +52,34 @@ export class FraudService {
       behavioralScore = 0.2;
     }
 
-    const riskLevel: FraudRisk = behavioralScore >= 0.6 ? 'HIGH' : behavioralScore >= 0.3 ? 'MEDIUM' : 'LOW';
+    // ── Graph: Neo4j fraud ring detection ───────────────────────────────────
+    let graphScore = 0;
+    let graphFlags: Array<{ type: string; description: string; severity: string }> = [];
+    try {
+      const res = await fetch(`${this.fraudMlUrl}/analyze/graph`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          claim_id: claimId,
+          tenant_id: tenantId,
+          policy_holder_id: policyHolderId,
+          vehicle_plate: vehiclePlate,
+        }),
+        signal: AbortSignal.timeout(5000),
+      });
+      if (res.ok) {
+        const data = await res.json() as { graph_score: number; flags: typeof graphFlags };
+        graphScore = data.graph_score ?? 0;
+        graphFlags = data.flags ?? [];
+        this.logger.log(`Graph fraud score ${graphScore.toFixed(2)} for claim ${claimId}`);
+      }
+    } catch (err) {
+      this.logger.warn(`Graph fraud call failed for ${claimId} — Neo4j may be offline: ${err}`);
+    }
+
+    const allFlags = [...flags, ...graphFlags];
+    const totalScore = computeTotal(behavioralScore, 0, graphScore);
+    const risk = riskLevel(totalScore);
     const autoHoldThreshold = 0.75;
 
     const fraudScoreId = uuidv4();
@@ -47,28 +91,30 @@ export class FraudService {
           tenantId,
           claimId,
           behavioralScore,
-          totalScore: behavioralScore * 0.35,
-          riskLevel,
-          flags,
+          graphScore,
+          totalScore,
+          riskLevel: risk,
+          flags: allFlags,
         },
-        update: { behavioralScore, riskLevel, flags },
+        update: { behavioralScore, graphScore, totalScore, riskLevel: risk, flags: allFlags },
       }),
     );
 
     const payload: FraudScoreUpdatedPayload = {
       claimId,
       fraudScoreId,
-      totalScore: behavioralScore * 0.35,
-      riskLevel,
+      totalScore,
+      riskLevel: risk,
       autoHold: behavioralScore >= autoHoldThreshold,
     };
 
     await this.kafka.publish(KAFKA_TOPICS.FRAUD_SCORE_UPDATED, payload, tenantId);
-    this.logger.log(`Behavioral fraud score ${behavioralScore.toFixed(2)} for claim ${claimId}`);
+    this.logger.log(
+      `Fraud scored for claim ${claimId}: behavioral=${behavioralScore.toFixed(2)} graph=${graphScore.toFixed(2)} total=${totalScore.toFixed(2)} risk=${risk}`,
+    );
   }
 
-  // Called by WorkflowService when fraud-ml publishes a fraud.score.updated event
-  // with an imageScore field. Merges the image signal into the existing FraudScore record.
+  // Called by WorkflowService when fraud-ml publishes fraud.score.updated with imageScore.
   async applyImageScore(
     tenantId: string,
     claimId: string,
@@ -80,10 +126,11 @@ export class FraudService {
     );
 
     const behavioralScore = existing ? Number(existing.behavioralScore) : 0;
-    const totalScore = Math.min(1, behavioralScore * 0.35 + imageScore * 0.65);
-    const riskLevel: FraudRisk = totalScore >= 0.6 ? 'HIGH' : totalScore >= 0.3 ? 'MEDIUM' : 'LOW';
-    const existingFlags = (existing?.flags as Array<{ type: string; description: string; severity: string }> | null) ?? [];
-    const allFlags = [...existingFlags, ...incomingFlags];
+    const graphScore      = existing ? Number(existing.graphScore)      : 0;
+    const totalScore      = computeTotal(behavioralScore, imageScore, graphScore);
+    const risk            = riskLevel(totalScore);
+    const existingFlags   = (existing?.flags as Array<{ type: string; description: string; severity: string }> | null) ?? [];
+    const allFlags        = [...existingFlags, ...incomingFlags];
 
     await withTenant(tenantId, (tx) =>
       tx.fraudScore.upsert({
@@ -94,13 +141,15 @@ export class FraudService {
           claimId,
           imageScore,
           totalScore,
-          riskLevel,
+          riskLevel: risk,
           flags: allFlags,
         },
-        update: { imageScore, totalScore, riskLevel, flags: allFlags },
+        update: { imageScore, totalScore, riskLevel: risk, flags: allFlags },
       }),
     );
 
-    this.logger.log(`Image fraud score ${imageScore.toFixed(2)} merged for claim ${claimId} → total=${totalScore.toFixed(2)}`);
+    this.logger.log(
+      `Image fraud merged for claim ${claimId}: image=${imageScore.toFixed(2)} graph=${graphScore.toFixed(2)} total=${totalScore.toFixed(2)}`,
+    );
   }
 }
