@@ -221,32 +221,23 @@ jobs:
       - name: Write GitHub job summary
         if: always()
         run: |
-          python -c "
-import json, os, sys
-p = 'ai-services/${{ matrix.service }}/pytest-results.json'
-if not os.path.exists(p):
-    sys.exit(0)
-with open(p) as f:
-    r = json.load(f)
-s = r.get('summary', {})
-total  = s.get('total', 0)
-passed = s.get('passed', 0)
-failed = s.get('failed', 0) + s.get('error', 0)
-icon = ':white_check_mark:' if failed == 0 else ':x:'
-lines = [
-  '### ' + icon + ' Python Tests — ${{ matrix.service }}',
-  '',
-  '| | Count |',
-  '|---|---|',
-  '| :white_check_mark: Passed | ' + str(passed) + ' |',
-  '| :x: Failed | ' + str(failed) + ' |',
-  '| Total | ' + str(total) + ' |',
-  '',
-  'HTML report is in the **test-report-python-${{ matrix.service }}** artifact below.',
-]
-with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as f:
-    f.write('\n'.join(lines) + '\n')
-"
+          JSON="ai-services/${{ matrix.service }}/pytest-results.json"
+          if [ ! -f "$JSON" ]; then exit 0; fi
+          TOTAL=$(jq '.summary.total  // 0' "$JSON")
+          PASSED=$(jq '.summary.passed // 0' "$JSON")
+          FAILED=$(jq '(.summary.failed // 0) + (.summary.error // 0)' "$JSON")
+          if [ "$FAILED" -eq 0 ]; then ICON=":white_check_mark:"; else ICON=":x:"; fi
+          {
+            echo "### $ICON Python Tests — ${{ matrix.service }}"
+            echo ""
+            echo "| | Count |"
+            echo "|---|---|"
+            echo "| :white_check_mark: Passed | $PASSED |"
+            echo "| :x: Failed | $FAILED |"
+            echo "| Total | $TOTAL |"
+            echo ""
+            echo "HTML report is in the **test-report-python-${{ matrix.service }}** artifact below."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload HTML test report
         if: always()
