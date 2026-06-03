@@ -507,4 +507,4 @@ pnpm --filter @autoclaimx/workshop-service test:e2e  # 7 tests
 
 ## License
 
-Private — All rights reserved. © 2026 AutoClaimX.
+© 2026 Rohit Nikam. All rights reserved.
