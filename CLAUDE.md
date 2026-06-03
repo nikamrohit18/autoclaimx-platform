@@ -61,7 +61,7 @@ pnpm down
 ```sh
 # Monitoring UIs (started automatically by pnpm infra:up)
 # Prometheus:  http://localhost:9090
-# Grafana:     http://localhost:3100  (admin / autoclaimx_secret)
+# Grafana:     http://localhost:3100  (admin / value of DEV_SECRET in .env)
 
 # Health endpoints on every NestJS service
 GET /api/v1/health        # backward-compatible simple check
