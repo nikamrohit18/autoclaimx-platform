@@ -69,6 +69,7 @@ export interface NegotiationSession {
     vehicleYear: number;
     vehiclePlate: string;
   };
+  workshopEstimate?: { total: number; currency: string };
   status: string;
   currentRound: number;
   maxRounds: number;

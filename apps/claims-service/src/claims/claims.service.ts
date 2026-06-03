@@ -147,23 +147,33 @@ export class ClaimsService {
     this.logger.log(`Damage report applied for claim ${payload.claimId}`);
   }
 
-  async getAnalytics(tenantId: string) {
+  async getAnalytics(tenantId: string, startDate?: string, endDate?: string) {
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const dateFilter = (startDate || endDate)
+      ? {
+          incidentDate: {
+            ...(startDate ? { gte: new Date(startDate) } : {}),
+            ...(endDate ? { lte: new Date(endDate) } : {}),
+          },
+        }
+      : {};
 
     const [statusGroups, recentCount, allFraud, agreedSessions, totalNegotiations, topRisk] = await withTenant(
       tenantId,
       (tx) =>
         Promise.all([
-          tx.claim.groupBy({ by: ['status'], where: { tenantId }, _count: { _all: true } }),
-          tx.claim.count({ where: { tenantId, createdAt: { gte: thirtyDaysAgo } } }),
-          tx.fraudScore.findMany({ where: { tenantId }, select: { riskLevel: true } }),
+          tx.claim.groupBy({ by: ['status'], where: { tenantId, ...dateFilter }, _count: { _all: true } }),
+          startDate || endDate
+            ? tx.claim.count({ where: { tenantId, ...dateFilter } })
+            : tx.claim.count({ where: { tenantId, createdAt: { gte: thirtyDaysAgo } } }),
+          tx.fraudScore.findMany({ where: { tenantId, claim: Object.keys(dateFilter).length ? dateFilter : undefined }, select: { riskLevel: true } }),
           tx.negotiationSession.findMany({
-            where: { tenantId, status: 'AGREED' },
+            where: { tenantId, status: 'AGREED', claim: Object.keys(dateFilter).length ? dateFilter : undefined },
             select: { finalAmount: true, workshopEstimate: { select: { total: true } } },
           }),
-          tx.negotiationSession.count({ where: { tenantId } }),
+          tx.negotiationSession.count({ where: { tenantId, claim: Object.keys(dateFilter).length ? dateFilter : undefined } }),
           tx.fraudScore.findMany({
-            where: { tenantId, riskLevel: { in: ['HIGH', 'CRITICAL'] } },
+            where: { tenantId, riskLevel: { in: ['HIGH', 'CRITICAL'] }, claim: Object.keys(dateFilter).length ? dateFilter : undefined },
             orderBy: { totalScore: 'desc' },
             take: 5,
             include: { claim: { select: { claimNumber: true, status: true } } },
@@ -193,6 +203,7 @@ export class ClaimsService {
     return {
       totalClaims,
       claimsLast30Days: recentCount,
+      hasDateFilter: !!(startDate || endDate),
       statusCounts,
       fraudStats: {
         withScore: allFraud.length,

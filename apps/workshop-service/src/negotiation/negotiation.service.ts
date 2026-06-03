@@ -221,6 +221,7 @@ export class NegotiationService {
         include: {
           offers: { orderBy: { createdAt: 'asc' } },
           claim: { select: { claimNumber: true, vehicleMake: true, vehicleModel: true, vehicleYear: true, vehiclePlate: true } },
+          workshopEstimate: { select: { total: true, currency: true } },
         },
         orderBy: { createdAt: 'desc' },
       }),

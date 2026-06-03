@@ -41,8 +41,12 @@ export class ClaimsController {
 
   // Must be registered before :id to avoid "analytics" being matched as an id
   @Get('analytics')
-  getAnalytics(@Headers('x-internal-tenant-id') tenantId: string) {
-    return this.claimsService.getAnalytics(tenantId);
+  getAnalytics(
+    @Headers('x-internal-tenant-id') tenantId: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    return this.claimsService.getAnalytics(tenantId, startDate, endDate);
   }
 
   @Get(':id')

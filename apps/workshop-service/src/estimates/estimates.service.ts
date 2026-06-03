@@ -36,6 +36,16 @@ export class EstimatesService {
     return { uploadUrl, estimateId, s3Key, expiresIn: 900 };
   }
 
+  async findByWorkshop(tenantId: string, workshopId: string) {
+    return withTenant(tenantId, (tx) =>
+      tx.workshopEstimate.findMany({
+        where: { workshopId, tenantId },
+        select: { id: true, claimId: true, total: true, laborTotal: true, partsTotal: true, currency: true, createdAt: true },
+        orderBy: { createdAt: 'desc' },
+      }),
+    );
+  }
+
   async confirmAndParse(tenantId: string, workshopId: string, claimId: string, s3Key: string) {
     const ocrUrl = process.env.OCR_EXTRACTION_URL ?? 'http://localhost:8004';
 

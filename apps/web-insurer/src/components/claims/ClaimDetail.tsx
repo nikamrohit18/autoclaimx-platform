@@ -1,25 +1,36 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { claimsApi, negotiationsApi, workshopsApi } from '@/lib/api';
 import { useClaimEvents } from '@/hooks/useClaimEvents';
 import { DamageViewer } from '@/components/damage/DamageViewer';
 import { FraudScoreCard } from '@/components/fraud/FraudScoreCard';
 import { NegotiationTimeline } from '@/components/negotiation/NegotiationTimeline';
-import type { Claim, Workshop, WorkshopEstimate } from '@autoclaimx/shared-types';
+import type { Claim, Workshop } from '@autoclaimx/shared-types';
+
+interface EstimateSummary {
+  id: string;
+  claimId: string;
+  total: number;
+  laborTotal: number;
+  partsTotal: number;
+  currency: string;
+  createdAt: string;
+}
 
 interface ClaimDetailProps {
   claimId: string;
 }
 
 export function ClaimDetail({ claimId }: ClaimDetailProps) {
-  const [claim, setClaim] = useState<Claim | null>(null);
-  const [workshops, setWorkshops] = useState<Workshop[]>([]);
+  const [claim, setClaim]                   = useState<Claim | null>(null);
+  const [workshops, setWorkshops]           = useState<Workshop[]>([]);
   const [selectedWorkshopId, setSelectedWorkshopId] = useState('');
-  const [estimates, setEstimates] = useState<WorkshopEstimate[]>([]);
+  const [estimates, setEstimates]           = useState<EstimateSummary[]>([]);
   const [selectedEstimateId, setSelectedEstimateId] = useState('');
-  const [startingNeg, setStartingNeg] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [startingNeg, setStartingNeg]       = useState(false);
+  const [loading, setLoading]               = useState(true);
 
   const loadClaim = useCallback(() => {
     claimsApi.get(claimId).then(setClaim).finally(() => setLoading(false));
@@ -28,6 +39,15 @@ export function ClaimDetail({ claimId }: ClaimDetailProps) {
   const wsConnected = useClaimEvents(claimId, (status) => {
     setClaim((prev) => prev ? { ...prev, status: status as Claim['status'] } : prev);
   });
+
+  // Load estimates whenever the selected workshop changes
+  useEffect(() => {
+    if (!selectedWorkshopId) { setEstimates([]); setSelectedEstimateId(''); return; }
+    workshopsApi.getEstimates(selectedWorkshopId).then((data) => {
+      setEstimates(data);
+      setSelectedEstimateId(data.length > 0 ? data[0].id : '');
+    }).catch(() => { setEstimates([]); setSelectedEstimateId(''); });
+  }, [selectedWorkshopId]);
 
   useEffect(() => {
     loadClaim();
@@ -49,12 +69,19 @@ export function ClaimDetail({ claimId }: ClaimDetailProps) {
   }
 
   if (loading) return <div className="text-center py-12 text-sm text-gray-500">Loading claim...</div>;
-  if (!claim) return <div className="text-center py-12 text-sm text-red-600">Claim not found</div>;
+  if (!claim)  return <div className="text-center py-12 text-sm text-red-600">Claim not found</div>;
 
   const canStartNeg = claim.damageReport && !claim.negotiation && claim.status === 'UNDER_ASSESSMENT';
 
   return (
     <div className="space-y-6">
+      {/* Breadcrumb */}
+      <nav className="flex items-center gap-1.5 text-sm text-gray-500">
+        <Link href="/claims" className="hover:text-blue-600 transition-colors">Claims</Link>
+        <span className="text-gray-300">/</span>
+        <span className="text-gray-900 font-medium">{claim.claimNumber}</span>
+      </nav>
+
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
@@ -84,10 +111,10 @@ export function ClaimDetail({ claimId }: ClaimDetailProps) {
       {/* Claim Info Grid */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
-          { label: 'Policy', value: claim.policyNumber },
+          { label: 'Policy',        value: claim.policyNumber },
           { label: 'Incident Date', value: new Date(claim.incidentDate).toLocaleDateString() },
           { label: 'Policy Holder', value: claim.policyHolderName ?? claim.policyHolderId },
-          { label: 'VIN', value: claim.vehicleVin ?? '—' },
+          { label: 'VIN',           value: claim.vehicleVin ?? '—' },
         ].map(({ label, value }) => (
           <div key={label} className="bg-white rounded-lg border p-4">
             <div className="text-xs text-gray-500 mb-1">{label}</div>
@@ -120,14 +147,24 @@ export function ClaimDetail({ claimId }: ClaimDetailProps) {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Workshop Estimate ID</label>
-              <input
-                type="text"
-                value={selectedEstimateId}
-                onChange={(e) => setSelectedEstimateId(e.target.value)}
-                placeholder="Paste estimate ID"
-                className="w-full border rounded-md px-3 py-2 text-sm"
-              />
+              <label className="block text-sm font-medium text-gray-700 mb-1">Workshop Estimate</label>
+              {estimates.length > 0 ? (
+                <select
+                  value={selectedEstimateId}
+                  onChange={(e) => setSelectedEstimateId(e.target.value)}
+                  className="w-full border rounded-md px-3 py-2 text-sm"
+                >
+                  {estimates.map((est) => (
+                    <option key={est.id} value={est.id}>
+                      {est.currency} {Number(est.total).toLocaleString()} — {new Date(est.createdAt).toLocaleDateString()}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <div className="w-full border rounded-md px-3 py-2 text-sm text-gray-400 bg-gray-50">
+                  {selectedWorkshopId ? 'No estimates on file for this workshop' : 'Select a workshop first'}
+                </div>
+              )}
             </div>
           </div>
           <button

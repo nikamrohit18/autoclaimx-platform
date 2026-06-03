@@ -73,7 +73,8 @@ export const adminApi = {
 // ── Analytics ────────────────────────────────────────────────────────────────
 
 export const analyticsApi = {
-  get: () => api.get('/claims/analytics').then((r) => r.data),
+  get: (params?: { startDate?: string; endDate?: string }) =>
+    api.get('/claims/analytics', { params }).then((r) => r.data),
 };
 
 // ── Workshops ─────────────────────────────────────────────────────────────────
@@ -82,4 +83,10 @@ export const workshopsApi = {
   list: () => api.get('/workshops').then((r) => r.data),
 
   get: (id: string) => api.get(`/workshops/${id}`).then((r) => r.data),
+
+  getEstimates: (workshopId: string) =>
+    api.get(`/workshops/${workshopId}/estimates`).then((r) => r.data as Array<{
+      id: string; claimId: string; total: number; laborTotal: number;
+      partsTotal: number; currency: string; createdAt: string;
+    }>),
 };

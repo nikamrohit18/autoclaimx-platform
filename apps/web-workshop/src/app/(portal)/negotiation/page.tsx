@@ -151,11 +151,19 @@ function RoundTable({
 
 // ── page ──────────────────────────────────────────────────────────────────────
 
+interface LineItem { label: string; amount: string }
+
+const DEFAULT_LINE_ITEMS: LineItem[] = [
+  { label: 'Labour', amount: '' },
+  { label: 'Parts',  amount: '' },
+  { label: 'Other',  amount: '' },
+];
+
 export default function NegotiationPage() {
   const [workshopId, setWorkshopId] = useState<string | null>(null);
   const [sessions, setSessions] = useState<NegotiationSession[]>([]);
   const [selected, setSelected] = useState<NegotiationSession | null>(null);
-  const [counterAmount, setCounterAmount] = useState('');
+  const [lineItems, setLineItems] = useState<LineItem[]>(DEFAULT_LINE_ITEMS.map((li) => ({ ...li })));
   const [counterMessage, setCounterMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -192,14 +200,25 @@ export default function NegotiationPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const lineItemsTotal = lineItems.reduce((sum, li) => sum + (Number(li.amount) || 0), 0);
+
+  function updateLineItem(idx: number, amount: string) {
+    setLineItems((prev) => prev.map((li, i) => i === idx ? { ...li, amount } : li));
+  }
+
   async function handleCounter(e: React.FormEvent) {
     e.preventDefault();
-    if (!selected || !workshopId) return;
+    if (!selected || !workshopId || lineItemsTotal <= 0) return;
     setSubmitting(true);
     showToast('Counter-offer submitted — waiting for AI response...', 'info', 0);
     try {
-      await negotiationsApi.counter(selected.id, { amount: Number(counterAmount), message: counterMessage });
-      setCounterAmount('');
+      const breakdown = lineItems
+        .filter((li) => Number(li.amount) > 0)
+        .map((li) => ({ label: li.label, amount: Number(li.amount) }));
+      const message = counterMessage.trim()
+        || breakdown.map((li) => `${li.label}: ${selected.currency} ${Number(li.amount).toLocaleString()}`).join(', ');
+      await negotiationsApi.counter(selected.id, { amount: lineItemsTotal, message });
+      setLineItems(DEFAULT_LINE_ITEMS.map((li) => ({ ...li })));
       setCounterMessage('');
       await loadSessions(workshopId);
       showToast('AI response received.', 'success');
@@ -268,10 +287,14 @@ export default function NegotiationPage() {
           {sessions.map((s) => {
             const lastAi = [...s.offers].reverse().find((o) => o.offerer === 'AI');
             const lastWs = [...s.offers].reverse().find((o) => o.offerer === 'WORKSHOP');
+            // Savings vs original workshop estimate total (preferred); fallback to first counter-offer
+            const estimateTotal = Number(s.workshopEstimate?.total ?? 0);
             const firstWs = s.offers.find((o) => o.offerer === 'WORKSHOP');
-            const concessionPct = firstWs && s.finalAmount
-              ? ((firstWs.amount - s.finalAmount) / firstWs.amount * 100).toFixed(1)
+            const savingsBase = estimateTotal > 0 ? estimateTotal : (firstWs?.amount ?? 0);
+            const savingsPct = savingsBase > 0 && s.finalAmount
+              ? ((savingsBase - s.finalAmount) / savingsBase * 100).toFixed(1)
               : null;
+            const savingsLabel = estimateTotal > 0 ? 'below estimate' : 'below first ask';
 
             return (
               <button
@@ -295,7 +318,7 @@ export default function NegotiationPage() {
                     {s.status === 'AGREED' && s.finalAmount ? (
                       <div className="text-xs text-green-700 mt-1.5 font-medium">
                         Settled {s.currency} {Number(s.finalAmount).toLocaleString()}
-                        {concessionPct && ` · ${concessionPct}% below your first ask`}
+                        {savingsPct && ` · ${savingsPct}% ${savingsLabel}`}
                       </div>
                     ) : lastAi ? (
                       <div className="text-xs text-gray-400 mt-1.5">
@@ -391,28 +414,45 @@ export default function NegotiationPage() {
           {submitting && <PendingBanner />}
 
           {!submitting && selected.status === 'OFFER_SENT' && (
-            <form onSubmit={handleCounter} className="space-y-3 border-t pt-4">
+            <form onSubmit={handleCounter} className="space-y-4 border-t pt-4">
               <h3 className="font-medium text-sm">Your Counter-Offer</h3>
-              <div>
-                <label className="text-xs text-gray-500 mb-1 block">Amount ({selected.currency})</label>
-                <input
-                  type="number"
-                  required
-                  value={counterAmount}
-                  onChange={(e) => setCounterAmount(e.target.value)}
-                  className="w-full border rounded px-3 py-2 text-sm"
-                  placeholder="Enter your counter-offer amount"
-                />
+
+              {/* Line-item editor */}
+              <div className="space-y-2">
+                <div className="grid grid-cols-[1fr_140px] gap-2 text-xs text-gray-500 px-1">
+                  <span>Cost Category</span>
+                  <span className="text-right">Amount ({selected.currency})</span>
+                </div>
+                {lineItems.map((li, idx) => (
+                  <div key={li.label} className="grid grid-cols-[1fr_140px] gap-2 items-center">
+                    <div className="text-sm text-gray-700 bg-gray-50 border rounded px-3 py-2">{li.label}</div>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={li.amount}
+                      onChange={(e) => updateLineItem(idx, e.target.value)}
+                      className="border rounded px-3 py-2 text-sm text-right"
+                      placeholder="0.00"
+                    />
+                  </div>
+                ))}
+                <div className="grid grid-cols-[1fr_140px] gap-2 items-center border-t pt-2 mt-1">
+                  <div className="text-sm font-semibold text-gray-900 px-1">Total</div>
+                  <div className="text-sm font-bold text-gray-900 text-right pr-1">
+                    {selected.currency} {lineItemsTotal > 0 ? Number(lineItemsTotal).toLocaleString(undefined, { minimumFractionDigits: 2 }) : '—'}
+                  </div>
+                </div>
               </div>
+
               <div>
-                <label className="text-xs text-gray-500 mb-1 block">Message / Justification</label>
+                <label className="text-xs text-gray-500 mb-1 block">Additional Notes (optional)</label>
                 <textarea
-                  required
                   value={counterMessage}
                   onChange={(e) => setCounterMessage(e.target.value)}
-                  rows={3}
+                  rows={2}
                   className="w-full border rounded px-3 py-2 text-sm resize-none"
-                  placeholder="Explain your pricing (e.g. part availability, labor complexity)..."
+                  placeholder="Explain any special circumstances, part availability, or labour complexity…"
                 />
               </div>
               <div className="flex gap-3">
@@ -425,7 +465,8 @@ export default function NegotiationPage() {
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
+                  disabled={lineItemsTotal <= 0}
+                  className="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50"
                 >
                   Submit Counter-Offer
                 </button>

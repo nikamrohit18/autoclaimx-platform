@@ -404,7 +404,6 @@ export default function AdminUsersPage() {
                 <tr key={u.id} className={`hover:bg-gray-50 ${!u.active ? 'opacity-60' : ''}`}>
                   <td className="px-4 py-3">
                     <div className="font-medium text-gray-900">{u.name}</div>
-                    <div className="text-xs text-gray-400 font-mono mt-0.5">{u.id.slice(0, 8)}…</div>
                   </td>
                   <td className="px-4 py-3 text-gray-500">
                     {u.email ? (

@@ -1,9 +1,17 @@
-import { Body, Controller, Param, Post, Headers } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Headers } from '@nestjs/common';
 import { EstimatesService } from './estimates.service';
 
 @Controller('workshops/:workshopId/estimates')
 export class EstimatesController {
   constructor(private readonly estimates: EstimatesService) {}
+
+  @Get()
+  findByWorkshop(
+    @Headers('x-internal-tenant-id') tid: string,
+    @Param('workshopId') workshopId: string,
+  ) {
+    return this.estimates.findByWorkshop(tid, workshopId);
+  }
 
   @Post('upload-url')
   getUploadUrl(
