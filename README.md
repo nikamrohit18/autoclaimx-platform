@@ -53,7 +53,6 @@ Policyholder submits claim (FNOL)
 - [Multi-Tenancy](#multi-tenancy)
 - [Kafka Event Flow](#kafka-event-flow)
 - [Testing](#testing)
-- [Demo Data](#demo-data)
 
 ---
 
@@ -495,36 +494,6 @@ pnpm --filter @autoclaimx/api-gateway test:e2e       # 12 tests
 pnpm --filter @autoclaimx/claims-service test:e2e    # 9 tests
 pnpm --filter @autoclaimx/workshop-service test:e2e  # 7 tests
 ```
-
----
-
-## Demo Data
-
-Running `pnpm db:seed` inserts the following demo data into the `stellar-insurance` tenant:
-
-### Login credentials (password: `Demo@1234`)
-
-| Email | Role |
-|---|---|
-| `admin@stellar.com` | INSURER_ADMIN |
-| `adjuster@stellar.com` | ADJUSTER |
-| `wsadmin@stellar.com` | WORKSHOP_ADMIN |
-
-### Policyholder accounts (phone OTP)
-
-| Phone | Name |
-|---|---|
-| `+60100000001` | Ahmad Farid |
-| `+60100000002` | Siti Noraini |
-| `+60100000003` | Kumar Rajan |
-
-### Sample claims
-
-| Claim # | Vehicle | Status | Notes |
-|---|---|---|---|
-| `ACX-2024-00001` | Perodua Myvi 2021 | UNDER_ASSESSMENT | Rear-end collision, damage report complete |
-| `ACX-2024-00002` | Honda City 2022 | NEGOTIATING | Workshop estimate + AI offer round 1 sent |
-| `ACX-2024-00003` | Toyota Vios 2020 | SETTLED | Settled at MYR 2,200 |
 
 ---
 
